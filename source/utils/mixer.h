@@ -1,30 +1,33 @@
-#ifndef DRYWETMIXER_H
-#define DRYWETMIXER_H
+#ifndef ANIRA_EXTERNAL_DRY_WET_MIXER_H
+#define ANIRA_EXTERNAL_DRY_WET_MIXER_H
 
 #include <vector>
+#include <cmath>
+#include <algorithm>
+#include <atomic>
 
-class mixer {
+class Mixer {
 public:
-    mixer();
+    Mixer();
 
-    void prepare(double sample_rate, size_t buffer_size, size_t latency_samples);
-    void push_dry_sample(float dry_sample);
+    void prepare(double sample_rate, size_t buffer_size, size_t num_channels, size_t latency_samples);
 
-    float mix_wet_sample(float wet_sample);
+    void push_dry_sample(float dry_sample, int channel);
+    float mix_wet_sample(float wet_sample, int channel);
 
     void set_mix(float new_mix);
 
 private:
-    std::vector<float> m_delay_buffer;
+    std::vector<std::vector<float>> m_delay_buffer;
+    std::vector<size_t> m_write_index;
+    std::vector<size_t> m_read_index;
 
     double m_sample_rate;
     size_t m_buffer_size;
-
+    size_t m_num_channels;
     size_t m_latency_samples;
-    float m_mix;
 
-    size_t m_write_index;
-    size_t m_read_index;
+    std::atomic<float> m_mix;
 };
 
-#endif //DRYWETMIXER_H
+#endif //ANIRA_EXTERNAL_DRY_WET_MIXER_H

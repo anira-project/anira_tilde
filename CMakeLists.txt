@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(anira-external VERSION 0.0.1)
+project(anira_tilde VERSION 0.0.1)
 
 if (APPLE)
     if (${CMAKE_GENERATOR} MATCHES "Xcode")
@@ -21,6 +21,8 @@ if (APPLE)
     endif()
 endif()
 
+set(C74_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/externals")
+
 # Misc setup and subroutines
 set(C74_MIN_SCRIPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/min-api/script)
 include(${C74_MIN_SCRIPT_DIR}/min-package.cmake)
@@ -35,7 +37,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/anira)
 #############################################################
 
 add_library(${PROJECT_NAME} MODULE
-    source/anira_tilde.cpp
+    source/AniraTilde.cpp
     source/utils/mixer.cpp
 )
 
@@ -43,5 +45,5 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${C74_INCLUDES}"
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE anira)
+target_link_libraries(${PROJECT_NAME} PRIVATE anira::anira)
 include(${C74_MIN_SCRIPT_DIR}/min-posttarget.cmake)
