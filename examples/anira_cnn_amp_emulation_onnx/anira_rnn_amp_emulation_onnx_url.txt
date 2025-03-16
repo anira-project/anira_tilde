@@ -1,0 +1,1 @@
+https://github.com/faressc/steerable-nafx/raw/refs/heads/main/models/model_0/steerable-nafx-libtorch-dynamic.onnx

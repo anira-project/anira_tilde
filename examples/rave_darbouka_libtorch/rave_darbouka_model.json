@@ -1,0 +1,7 @@
+{
+    "modelpath" : "path/to/darbouka_onnx.ts",
+    "backend" : "LIBTORCH",
+    "input_shape" : [1, 1, 2048],
+    "output_shape" : [1, 1, 2048],
+	"max_inference_time" : 63.1
+}

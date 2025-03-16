@@ -1,0 +1,7 @@
+{
+    "modelpath" : "path/to/stateful-lstm-dynamic.tflite",
+    "backend" : "TFLITE",
+    "input_shape" : [1, 2048, 1],
+    "output_shape" : [1, 2048, 1],
+	"max_inference_time" : 63.1
+}

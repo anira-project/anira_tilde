@@ -1,0 +1,9 @@
+[submodule "modules/anira"]
+	path = modules/anira
+	url = https://github.com/anira-project/anira/
+[submodule "modules/min-api"]
+	path = modules/min-api
+	url = https://github.com/Cycling74/min-api/
+[submodule "modules/min-lib"]
+	path = modules/min-lib
+	url = https://github.com/Cycling74/min-lib/

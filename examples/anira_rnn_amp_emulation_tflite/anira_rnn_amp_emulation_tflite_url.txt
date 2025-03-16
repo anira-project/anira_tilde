@@ -1,0 +1,1 @@
+https://github.com/vackva/stateful-lstm/raw/refs/heads/main/models/model_0/stateful-lstm-dynamic.tflite
