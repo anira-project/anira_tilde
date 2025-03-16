@@ -31,14 +31,14 @@
 
 	<methodlist>
 
-		<method name='dictionary'>
-			<digest>Provide model configurations via json </digest>
-			<description>Provide model configurations via json </description>
-		</method>
-
 		<method name='drywet'>
 			<digest>Set the dry/wet mix </digest>
 			<description>Set the dry/wet mix </description>
+		</method>
+
+		<method name='dictionary'>
+			<digest>Provide model configurations via json </digest>
+			<description>Provide model configurations via json </description>
 		</method>
 
 	</methodlist>
