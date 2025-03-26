@@ -6,7 +6,7 @@
 #include <vector>
 #include <string>
 #include <anira/anira.h>
-#include "utils/mixer.h"
+#include "utils/Mixer.h"
 
 // Currently only mono or stereo supported
 #define NUMBER_OF_CHANNELS 2
@@ -18,9 +18,12 @@ public:
 
     static unsigned int get_num_threads();
 
-    MIN_DESCRIPTION { "Max object wrapping the anira inference engine. "
-                      "For details visit the <a href='https://github.com/anira-project/anira'>anira repository</a> on Github "
-                      "(credits: Valentin Ackva, Fares Schulz)." };
+    MIN_DESCRIPTION { 
+        "Neural network inference wrapper for Max. "
+        "The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. "
+        "It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. "
+        "At runtime a configuration file can be submitted to the external to load a model. " 
+    };
     MIN_TAGS		{ "audio, ML, inference" };
     MIN_AUTHOR		{ "Konstantin Fontaine, Valentin Ackva, Fares Schulz" };
     MIN_RELATED		{ "nn~" };

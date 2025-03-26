@@ -4,7 +4,7 @@
 
 ## Description
 
-The `anira~` external integrates the [anira](https://github.com/anira-project/anira) library to offer neural network inference inside max msp. It currently supports the following inference engines: `LibTorch`, `ONNXRuntime`, and `TensorFlow Lite`. At runtime a configuration file can be submitted to the external to load a model.
+The `anira~` external integrates the [anira](https://github.com/anira-project/anira) library to offer neural network inference inside Max. It currently supports the following inference engines: `LibTorch`, `ONNXRuntime`, and `TensorFlow Lite`. At runtime a configuration file can be submitted to the external to load a model.
 
 The configuration file is a JSON file that contains the following fields:
 

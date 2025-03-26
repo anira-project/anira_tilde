@@ -6,8 +6,8 @@
 
 <c74object name='anira~' category='audio,  ML,  inference'>
 
-	<digest>Max object wrapping the anira inference engine</digest>
-	<description>Max object wrapping the anira inference engine. For details visit the <a href='https://github.com/anira-project/anira'>anira repository</a> on Github (credits: Valentin Ackva, Fares Schulz). </description>
+	<digest>Neural network inference wrapper for Max</digest>
+	<description>Neural network inference wrapper for Max. The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. At runtime a configuration file can be submitted to the external to load a model. </description>
 
 
 	<!--METADATA-->
