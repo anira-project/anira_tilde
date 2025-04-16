@@ -22,7 +22,7 @@ public:
         "Neural network inference wrapper for Max. "
         "The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. "
         "It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. "
-        "At runtime a configuration file can be submitted to the external to load a model. " 
+        "At runtime a configuration file can be submitted as dictionary to load a model. " 
     };
     MIN_TAGS		{ "audio, ML, inference" };
     MIN_AUTHOR		{ "Konstantin Fontaine, Valentin Ackva, Fares Schulz" };
@@ -36,9 +36,20 @@ public:
     c74::min::outlet<> output2 { this, "(signal) Output 2", "signal" };
 #endif
 
+    c74::min::outlet<> latency_output { this, "(int) Latency When Config Load Complete", "int"};
+
     c74::min::message<> dictionary;
     c74::min::message<> dry_wet;
     c74::min::message<> dspsetup;
+
+    c74::min::attribute<int> threads {
+        this, "threads", 0,
+        c74::min::description{"Number of audio threads"},
+        c74::min::range{0, 64},
+        c74::min::setter{ MIN_FUNCTION {
+            return args;
+        }}
+    };
 
     void operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) override;
 
@@ -50,6 +61,8 @@ private:
         std::vector<int64_t> output_shape;
         float max_inference_time;
     };
+
+    bool m_threads_set = false;
 
     void prepare(size_t host_buffer_size, double host_sample_rate);
     static ModelConfig extract_setup_from_dict(c74::min::dict& d);

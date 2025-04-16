@@ -10,9 +10,10 @@
 		}
 ,
 		"classnamespace" : "box",
-		"rect" : [ 134.0, 178.0, 559.0, 642.0 ],
+		"rect" : [ 134.0, 178.0, 554.0, 663.0 ],
 		"default_fontname" : "Ableton Sans",
 		"gridsize" : [ 15.0, 15.0 ],
+		"digest" : "Neural network inference wrapper for Max",
 		"boxes" : [ 			{
 				"box" : 				{
 					"id" : "obj-18",
@@ -283,7 +284,7 @@
 					"numoutlets" : 1,
 					"outlettype" : [ "" ],
 					"parameter_enable" : 0,
-					"patching_rect" : [ 25.0, 25.0, 515.0, 133.0 ]
+					"patching_rect" : [ 25.0, 25.0, 513.0, 139.0 ]
 				}
 
 			}
@@ -323,8 +324,8 @@
 					"numinlets" : 1,
 					"numoutlets" : 1,
 					"outlettype" : [ "" ],
-					"patching_rect" : [ 73.0, 400.0, 92.0, 23.0 ],
-					"text" : "prepend drywet"
+					"patching_rect" : [ 73.0, 400.0, 74.0, 23.0 ],
+					"text" : "prepend mix"
 				}
 
 			}
@@ -386,10 +387,10 @@
 					"id" : "obj-1",
 					"maxclass" : "newobj",
 					"numinlets" : 2,
-					"numoutlets" : 2,
-					"outlettype" : [ "signal", "signal" ],
-					"patching_rect" : [ 25.0, 464.0, 52.0, 23.0 ],
-					"text" : "anira~"
+					"numoutlets" : 3,
+					"outlettype" : [ "signal", "signal", "int" ],
+					"patching_rect" : [ 25.0, 464.0, 107.0, 23.0 ],
+					"text" : "anira~ @threads 4"
 				}
 
 			}
@@ -491,7 +492,7 @@
 
 			}
  ],
-		"originid" : "pat-9",
+		"originid" : "pat-13",
 		"parameters" : 		{
 			"obj-11" : [ "live.gain~[2]", "output", 0 ],
 			"obj-2" : [ "live.drop", "live.drop", 0 ],

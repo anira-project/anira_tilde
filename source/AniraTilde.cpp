@@ -11,7 +11,7 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             return {};
         }
     ),
-    dry_wet(this, "drywet", "Set the dry/wet mix",
+    dry_wet(this, "mix", "Set the dry/wet mix of the output",
         MIN_FUNCTION {
             const float new_mix = std::clamp(static_cast<float>(args[0]), 0.0f, 100.0f) / 100.0f;
             m_dry_wet_mixer.set_mix(new_mix);
@@ -22,17 +22,17 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
         MIN_FUNCTION {
             const auto sample_rate = static_cast<double>(args[0]);
             const auto buffer_size = static_cast<size_t>(args[1]);
-
+            const int m_threads = (threads > 0 ? static_cast<int>(threads) : get_num_threads());
+            m_anira_context = anira::ContextConfig(m_threads);
+            
             prepare(buffer_size, sample_rate);
             return {};
         }
     )
 {
-    c74::max::post("anira~: External created (Threadpool config: %d threads)", get_num_threads());
 }
 
 AniraTilde::~AniraTilde() {
-    c74::max::post("anira~: External destroyed");
 }
 
 unsigned int AniraTilde::get_num_threads() {
@@ -90,6 +90,11 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
     if (m_anira_model_load_confirmed.load(std::memory_order_acquire) == false) {
         m_anira_model_load_confirmed.store(true, std::memory_order_release);
     }
+
+    // if(m_inference_handler != nullptr && anira_initialized){
+    //     c74::max::post("Mixer latency: %d", m_dry_wet_mixer.get_latency());
+    //     c74::max::post("Inference latency: %d", m_inference_handler->get_latency());
+    // }
 }
 
 void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
@@ -204,6 +209,9 @@ void AniraTilde::setup_anira(ModelConfig& config) {
     m_inference_handler->set_inference_backend(m_selected_backend);
 
     m_anira_ready_to_process.store(true, std::memory_order_release);
+
+    const int external_latency_ms = external_latency / m_audio_config.m_host_sample_rate * 1000;
+    latency_output.send(external_latency_ms);
 }
 
 // TODO: Check if we can suspend processing instead of this busy waiting
