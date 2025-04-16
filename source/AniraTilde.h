@@ -5,6 +5,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <filesystem>
 #include <anira/anira.h>
 #include "utils/Mixer.h"
 

@@ -6,8 +6,12 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
     dictionary(this, "dictionary", "Provide model configurations via json",
         MIN_FUNCTION {
             c74::min::dict d { args[0] };
-            ModelConfig config = extract_setup_from_dict(d);
-            setup_anira(config);
+            try {
+                ModelConfig config = extract_setup_from_dict(d);
+                setup_anira(config);
+            } catch (const std::exception& e) {
+                c74::max::error("anira~: %s", e.what());
+            }
             return {};
         }
     ),
@@ -136,6 +140,10 @@ AniraTilde::ModelConfig AniraTilde::extract_setup_from_dict(c74::min::dict& d) {
     requested_config.max_inference_time = static_cast<float>(static_cast<c74::min::atom>(d["max_inference_time"]));
     const c74::min::atoms input_shape = d["input_shape"];
     const c74::min::atoms output_shape = d["output_shape"];
+
+    if(!std::filesystem::exists(requested_config.model_path)) {
+        throw std::runtime_error("Invalid model path");
+    }
 
     for (auto i : input_shape) {
         requested_config.input_shape.emplace_back(static_cast<int64_t>(i));
