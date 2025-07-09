@@ -10,11 +10,23 @@
 		}
 ,
 		"classnamespace" : "box",
-		"rect" : [ 137.0, 181.0, 554.0, 663.0 ],
+		"rect" : [ 143.0, 448.0, 570.0, 698.0 ],
 		"default_fontname" : "Ableton Sans",
 		"gridsize" : [ 15.0, 15.0 ],
 		"digest" : "Neural network inference wrapper for Max",
 		"boxes" : [ 			{
+				"box" : 				{
+					"id" : "obj-15",
+					"maxclass" : "message",
+					"numinlets" : 2,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 162.5, 401.0, 36.0, 23.0 ],
+					"text" : "reset"
+				}
+
+			}
+, 			{
 				"box" : 				{
 					"id" : "obj-19",
 					"maxclass" : "newobj",
@@ -68,7 +80,7 @@
 
 							}
  ],
-						"originid" : "pat-38"
+						"originid" : "pat-37"
 					}
 ,
 					"patching_rect" : [ 319.0, 614.25, 175.0, 23.0 ],
@@ -82,6 +94,7 @@
 			}
 , 			{
 				"box" : 				{
+					"activebgcolor" : [ 1.0, 0.709803921568627, 0.196078431372549, 1.0 ],
 					"id" : "obj-20",
 					"maxclass" : "live.text",
 					"mode" : 0,
@@ -91,6 +104,10 @@
 					"parameter_enable" : 1,
 					"patching_rect" : [ 319.0, 591.0, 175.0, 17.0 ],
 					"saved_attribute_attributes" : 					{
+						"activebgcolor" : 						{
+							"expression" : "themecolor.live_control_selection"
+						}
+,
 						"valueof" : 						{
 							"parameter_enum" : [ "val1", "val2" ],
 							"parameter_longname" : "live.text",
@@ -519,6 +536,14 @@
 			}
 , 			{
 				"patchline" : 				{
+					"destination" : [ "obj-1", 0 ],
+					"midpoints" : [ 172.0, 440.62109375, 34.5, 440.62109375 ],
+					"source" : [ "obj-15", 0 ]
+				}
+
+			}
+, 			{
+				"patchline" : 				{
 					"destination" : [ "obj-4", 0 ],
 					"midpoints" : [ 407.5, 443.83984375, 428.23046875, 443.83984375, 428.23046875, 377.41796875, 328.5, 377.41796875 ],
 					"source" : [ "obj-18", 0 ]
@@ -593,7 +618,7 @@
 
 			}
  ],
-		"originid" : "pat-36",
+		"originid" : "pat-35",
 		"parameters" : 		{
 			"obj-11" : [ "live.gain~[2]", "output", 0 ],
 			"obj-2" : [ "live.drop", "live.drop", 0 ],

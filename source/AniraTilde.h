@@ -41,6 +41,7 @@ public:
 
     c74::min::message<> dictionary;
     c74::min::message<> dry_wet;
+    c74::min::message<> reset;
     c74::min::message<> dspsetup;
 
     c74::min::attribute<int> threads {
@@ -68,6 +69,7 @@ private:
     void prepare(size_t host_buffer_size, double host_sample_rate);
     static ModelConfig extract_setup_from_dict(c74::min::dict& d);
     void setup_anira(ModelConfig& config);
+    void reset_anira();
     void wait_for_model_load();
 
     static void print_submitted_config(ModelConfig& config);

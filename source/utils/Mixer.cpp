@@ -14,7 +14,7 @@ void Mixer::prepare(double sample_rate, size_t buffer_size, size_t num_channels,
     const size_t read_index = (write_index + delay_size - m_latency_samples) % delay_size;
 
     m_write_index.assign(m_num_channels, write_index);
-    m_read_index.resize(m_num_channels, read_index);
+    m_read_index.assign(m_num_channels, read_index);
     m_delay_buffer.assign(m_num_channels, std::vector<float>(delay_size, 0.0f));
 }
 

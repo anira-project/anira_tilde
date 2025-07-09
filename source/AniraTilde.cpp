@@ -8,6 +8,7 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             c74::min::dict d { args[0] };
             try {
                 ModelConfig config = extract_setup_from_dict(d);
+                reset_anira();
                 setup_anira(config);
             } catch (const std::exception& e) {
                 c74::max::error("anira~: %s", e.what());
@@ -19,6 +20,17 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
         MIN_FUNCTION {
             const float new_mix = std::clamp(static_cast<float>(args[0]), 0.0f, 100.0f) / 100.0f;
             m_dry_wet_mixer.set_mix(new_mix);
+            return {};
+        }
+    ),
+    reset(this, "reset", "Clear current model configuration and reset internal state",
+        MIN_FUNCTION {
+            try {
+                reset_anira();
+                c74::max::post("anira~: Model configuration reset successfully");
+            } catch (const std::exception& e) {
+                c74::max::error("anira~: Error during reset: %s", e.what());
+            }
             return {};
         }
     ),
@@ -218,8 +230,42 @@ void AniraTilde::setup_anira(ModelConfig& config) {
 
     m_anira_ready_to_process.store(true, std::memory_order_release);
 
-    const int external_latency_ms = external_latency / m_audio_config.m_host_sample_rate * 1000;
+    const int external_latency_ms = static_cast<int>((external_latency / m_audio_config.m_host_sample_rate) * 1000.0);
     latency_output.send(external_latency_ms);
+}
+
+void AniraTilde::reset_anira() {
+    m_anira_ready_to_process.store(false, std::memory_order_release);
+
+    wait_for_model_load();
+
+    if(m_inference_handler != nullptr) {
+        m_inference_handler.reset();
+    }
+
+    if(m_pp_processor != nullptr) {
+        m_pp_processor.reset();
+    }
+
+    if(m_inference_config != nullptr) {
+        m_inference_config.reset();
+    }
+
+    m_dry_audio_data.assign(NUMBER_OF_CHANNELS, std::vector<float>(m_audio_config.m_host_buffer_size, 0.0f));
+    m_wet_audio_data.assign(NUMBER_OF_CHANNELS, std::vector<float>(m_audio_config.m_host_buffer_size, 0.0f));
+
+    m_dry_wet_mixer.prepare(
+        m_audio_config.m_host_sample_rate,
+        m_audio_config.m_host_buffer_size,
+        NUMBER_OF_CHANNELS,
+        0
+    );
+
+    stereo_to_mono = false;
+
+    m_anira_model_load_confirmed.store(true, std::memory_order_release);
+
+    latency_output.send(0);
 }
 
 // TODO: Check if we can suspend processing instead of this busy waiting

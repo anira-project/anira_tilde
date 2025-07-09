@@ -16,6 +16,7 @@ public:
     float mix_wet_sample(float wet_sample, int channel);
 
     void set_mix(float new_mix);
+    size_t get_latency() const { return m_latency_samples; }
 
 private:
     std::vector<std::vector<float>> m_delay_buffer;
