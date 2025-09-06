@@ -1,5 +1,17 @@
 #include "AniraTilde.h"
 
+// ---- shift from dict to json w/ anira v2 ----
+//
+// - remove dictionary input
+// - get in/out sig/msg infos from json config
+// - remove process redundancies from old structure
+// - expose flag für message inputs
+//
+// general: 
+// - shift threads-definition to .cpp, only declare in .h
+// ---------------------------------------------
+
+
 AniraTilde::AniraTilde(const c74::min::atoms& args) :
     m_anira_context(get_num_threads()),
     m_audio_config(512, 48000.0),
@@ -45,7 +57,24 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             return {};
         }
     )
+    // dump(this, "Dump model config to console",
+    //     MIN_FUNCTION {
+    //         print_submitted_config();
+    //     }
+    // )
 {
+    if (args.size() > 0) {
+        m_config_file_path = static_cast<std::string>(args[0]);
+        
+        if (!m_config_file_path.empty() && std::filesystem::exists(m_config_file_path)) {
+            c74::max::post("anira~: Loading config from: %s", m_config_file_path.c_str());
+            load_json_config();
+        } else {
+            c74::max::error("anira~: Config file not found: %s", m_config_file_path.c_str());
+        }
+    } else {
+        c74::max::post("anira~: No config file specified");
+    }
 }
 
 AniraTilde::~AniraTilde() {
@@ -106,11 +135,29 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
     if (m_anira_model_load_confirmed.load(std::memory_order_acquire) == false) {
         m_anira_model_load_confirmed.store(true, std::memory_order_release);
     }
+}
 
-    // if(m_inference_handler != nullptr && anira_initialized){
-    //     c74::max::post("Mixer latency: %d", m_dry_wet_mixer.get_latency());
-    //     c74::max::post("Inference latency: %d", m_inference_handler->get_latency());
-    // }
+void AniraTilde::init_external(int sig_inputs, int sig_outputs, int msg_inputs, int msg_outputs) {
+    m_inlets.clear();
+    m_outlets.clear();
+
+    for (int i = 0; i < sig_inputs; ++i) {
+        m_inlets.push_back(std::make_unique<c74::min::inlet<>>(this, "(signal) Input " + std::to_string(i + 1), "signal"));
+    }
+
+    for (int i = 0; i < sig_outputs; ++i) {
+        m_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(signal) Output " + std::to_string(i + 1), "signal"));
+    }
+
+    for (int i = 0; i < msg_inputs; ++i) {
+        m_inlets.push_back(std::make_unique<c74::min::inlet<>>(this, "(message) Input " + std::to_string(i + 1), "float"));
+    }
+
+    for (int i = 0; i < msg_outputs; ++i) {
+        m_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(message) Output " + std::to_string(i + 1), "float"));
+    }
+
+    m_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int"));
 }
 
 void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
@@ -144,6 +191,184 @@ void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
     }
 }
 
+void AniraTilde::load_json_config() {
+    if (m_config_file_path.empty() || !std::filesystem::exists(m_config_file_path)) {
+        c74::max::error("anira~: Invalid config file path");
+        return;
+    }
+
+    auto vec_to_str = [this](const std::vector<int64_t>& v){ return vector_to_string(v); };
+    auto elem_count = [](const std::vector<int64_t>& shape) -> size_t {
+        size_t e = 1;
+        for (auto d : shape) e *= static_cast<size_t>(d > 0 ? d : 1);
+        return e;
+    };
+
+    auto get_vec64 = [](const nlohmann::json& node, const char* key) -> std::vector<int64_t> {
+        if (node.contains(key)) return node.at(key).get<std::vector<int64_t>>();
+        return {};
+    };
+    auto get_shapes_from_key = [](const nlohmann::json& node, const char* key) -> std::vector<std::vector<int64_t>> {
+        std::vector<std::vector<int64_t>> out;
+        if (!node.contains(key) || !node.at(key).is_array()) return out;
+        const auto& v = node.at(key);
+        // if {single tensor} else {list of tensors}  
+        if (!v.empty() && v[0].is_number()) {                       
+            out.push_back(v.get<std::vector<int64_t>>());
+        } else {                                                    
+            for (const auto& t : v) out.push_back(t.get<std::vector<int64_t>>());
+        }
+        return out;
+    };
+
+    try {
+        std::ifstream file(m_config_file_path);
+        if (!file.is_open()) {
+            c74::max::error("anira~: Could not open config file");
+            return;
+        }
+        nlohmann::json j; file >> j; file.close();
+
+        // ---- normalize sources (support old flat keys and new nested keys) ----
+        nlohmann::json inf  = j.contains("inference_config") ? j["inference_config"] : j;
+        nlohmann::json proc = inf.contains("processing_spec") ? inf["processing_spec"] : j;
+
+        // shapes:
+        std::vector<std::vector<int64_t>> inShapes, outShapes;
+        if (inf.contains("tensor_shape") && inf["tensor_shape"].is_array() && !inf["tensor_shape"].empty()) {
+            const auto& ts = inf["tensor_shape"][0];
+            inShapes  = get_shapes_from_key(ts, "input_shape");
+            outShapes = get_shapes_from_key(ts, "output_shape");
+        } else {
+            // fallback
+            inShapes  = get_shapes_from_key(j, "input_shape");
+            outShapes = get_shapes_from_key(j, "output_shape");
+        }
+
+        // processing_spec arrays (per-tensor)
+        auto inSz  = get_vec64(proc, "preprocess_input_size");
+        auto inCh  = get_vec64(proc, "preprocess_input_channels");
+        auto outSz = get_vec64(proc, "postprocess_output_size");
+        auto outCh = get_vec64(proc, "postprocess_output_channels");
+
+        // --- debug print ---
+        c74::max::post("preprocess input channels: %s", vec_to_str(inCh).c_str());
+        c74::max::post("postprocess output channels: %s", vec_to_str(outCh).c_str());
+        c74::max::post("preprocess input size: %s", vec_to_str(inSz).c_str());
+        c74::max::post("postprocess output size: %s", vec_to_str(outSz).c_str());
+
+        // ---- compute counts ----
+        auto safe_vec_at = [](const std::vector<int64_t>& v, size_t i, int64_t def)->int64_t {
+            return (i < v.size()) ? v[i] : def;
+        };
+        auto safe_shape  = [](const std::vector<std::vector<int64_t>>& vv, size_t i)->std::vector<int64_t> {
+            if (i < vv.size()) return vv[i];
+            return {1}; // default 1 element
+        };
+        auto vmax3 = [](size_t a, size_t b, size_t c){ return std::max(a, std::max(b, c)); };
+
+        size_t nIn  = vmax3(inSz.size(),  inCh.size(),  inShapes.size());
+        size_t nOut = vmax3(outSz.size(), outCh.size(), outShapes.size());
+
+        size_t in_sig = 0, in_msg = 0, out_sig = 0, out_msg = 0;
+
+        for (size_t i = 0; i < nIn; ++i) {
+            const int64_t sz = safe_vec_at(inSz, i, 0);
+            if (sz > 0) {
+                const int64_t ch = std::max<int64_t>(1, safe_vec_at(inCh, i, 1));
+                in_sig += static_cast<size_t>(ch);
+            } else {
+                in_msg += elem_count(safe_shape(inShapes, i));
+            }
+        }
+        for (size_t i = 0; i < nOut; ++i) {
+            const int64_t sz = safe_vec_at(outSz, i, 0);
+            if (sz > 0) {
+                const int64_t ch = std::max<int64_t>(1, safe_vec_at(outCh, i, 1));
+                out_sig += static_cast<size_t>(ch);
+            } else {
+                out_msg += elem_count(safe_shape(outShapes, i));
+            }
+        }
+
+        // ---- set member vars from new spec ----
+        m_num_input_signals   = static_cast<int>(in_sig);
+        m_num_input_messages  = static_cast<int>(in_msg);
+        m_num_output_signals  = static_cast<int>(out_sig);
+        m_num_output_messages = static_cast<int>(out_msg);
+
+        c74::max::post("=> in_sig = %d, in_msg = %d, out_sig = %d, out_msg = %d",
+                       m_num_input_signals, m_num_input_messages, m_num_output_signals, m_num_output_messages);
+
+    } catch (const std::exception& e) {
+        c74::max::error("anira~: Error parsing JSON: %s", e.what());
+    }
+
+    init_external(m_num_input_signals, m_num_output_signals, m_num_input_messages, m_num_output_messages);
+}
+
+// void AniraTilde::load_json_config() {
+//     if (m_config_file_path.empty() || !std::filesystem::exists(m_config_file_path)) {
+//         c74::max::error("anira~: Invalid config file path");
+//         return;
+//     }
+
+//     try {
+//         std::ifstream file(m_config_file_path);
+//         if (!file.is_open()) {
+//             c74::max::error("anira~: Could not open config file");
+//             return;
+//         }
+
+//         json j;
+//         file >> j;
+//         file.close();
+
+//         ModelConfig requested_config;
+
+//         requested_config.model_path = j.value("model_path", "");
+//         requested_config.backend = j.value("inference_backend", "");
+//         requested_config.max_inference_time = j.value("max_inference_time", 0.0);
+
+//         //udo: first pass in/out shapes to varaiables from arrays
+//         //udo: then call reset_anira()
+//         //udo: then call setup_anira() with dict
+
+//         requested_config.input_shape = j.contains("input_shape") ? j["input_shape"].get<std::vector<int64_t>>() : std::vector<int64_t>{};
+//         requested_config.output_shape = j.contains("output_shape") ? j["output_shape"].get<std::vector<int64_t>>() : std::vector<int64_t>{};
+        
+//         requested_config.preprocess_input_channels = j.contains("preprocess_input_channels") ? j["preprocess_input_channels"].get<std::vector<int64_t>>() : std::vector<int64_t>{};
+//         requested_config.postprocess_output_channels = j.contains("postprocess_output_channels") ? j["postprocess_output_channels"].get<std::vector<int64_t>>() : std::vector<int64_t>{};
+//         requested_config.preprocess_input_size = j.contains("preprocess_input_size") ? j["preprocess_input_size"].get<std::vector<int64_t>>() : std::vector<int64_t>{};
+//         requested_config.postprocess_output_size = j.contains("postprocess_output_size") ? j["postprocess_output_size"].get<std::vector<int64_t>>() : std::vector<int64_t>{};
+        
+//         // requested_config.input_signals =
+//         // requested_config.input_messages =
+//         // requested_config.output_signals =
+//         // requested_config.output_messages =
+
+//         // // --- test ----
+//         c74::max::post("preprocess input channels: %s", vector_to_string(requested_config.preprocess_input_channels).c_str());
+//         c74::max::post("postprocess output channels: %s", vector_to_string(requested_config.postprocess_output_channels).c_str());
+//         c74::max::post("preprocess input size: %s", vector_to_string(requested_config.preprocess_input_size).c_str());
+//         c74::max::post("postprocess output size: %s", vector_to_string(requested_config.postprocess_output_size).c_str());
+//         // -------------
+
+        
+//         m_num_input_signals  = j.value("n_input_signals", 0);
+//         m_num_input_messages = j.value("n_input_messages", 0);
+//         m_num_output_signals = j.value("n_output_signals", 0);
+//         m_num_output_messages = j.value("n_output_messages", 0);
+
+//     } catch (const std::exception& e) {
+//         c74::max::error("anira~: Error parsing JSON: %s", e.what());
+//     }
+
+//     init_external(m_num_input_signals, m_num_output_signals, m_num_input_messages, m_num_output_messages);
+
+//     // return requested_config;
+// }
+
 AniraTilde::ModelConfig AniraTilde::extract_setup_from_dict(c74::min::dict& d) {
     ModelConfig requested_config;
 
@@ -167,7 +392,6 @@ AniraTilde::ModelConfig AniraTilde::extract_setup_from_dict(c74::min::dict& d) {
 
     return requested_config;
 }
-
 
 void AniraTilde::setup_anira(ModelConfig& config) {
     if (config.model_path.empty() || config.backend.empty() || config.input_shape.empty() ||
@@ -231,7 +455,7 @@ void AniraTilde::setup_anira(ModelConfig& config) {
     m_anira_ready_to_process.store(true, std::memory_order_release);
 
     const int external_latency_ms = static_cast<int>((external_latency / m_audio_config.m_host_sample_rate) * 1000.0);
-    latency_output.send(external_latency_ms);
+    m_outlets.back()->send(external_latency_ms);
 }
 
 void AniraTilde::reset_anira() {
@@ -265,7 +489,7 @@ void AniraTilde::reset_anira() {
 
     m_anira_model_load_confirmed.store(true, std::memory_order_release);
 
-    latency_output.send(0);
+    m_outlets.back()->send(0);
 }
 
 // TODO: Check if we can suspend processing instead of this busy waiting

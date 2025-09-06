@@ -6,8 +6,11 @@
 #include <vector>
 #include <string>
 #include <filesystem>
+#include <fstream>
 #include <anira/anira.h>
 #include "utils/Mixer.h"
+#include "utils/json.hpp"
+using json = nlohmann::json;
 
 // Currently only mono or stereo supported
 #define NUMBER_OF_CHANNELS 2
@@ -29,20 +32,14 @@ public:
     MIN_AUTHOR		{ "Konstantin Fontaine, Valentin Ackva, Fares Schulz" };
     MIN_RELATED		{ "nn~" };
 
-    c74::min::inlet<>  input1 { this, "(signal) Input 1", "signal" };
-    c74::min::outlet<> output1 { this, "(signal) Output 1", "signal" };
-
-#if NUMBER_OF_CHANNELS == 2
-    c74::min::inlet<>  input2 { this, "(signal) Input 2", "signal" };
-    c74::min::outlet<> output2 { this, "(signal) Output 2", "signal" };
-#endif
-
-    c74::min::outlet<> latency_output { this, "(int) Latency When Config Load Complete", "int"};
+    std::vector<std::unique_ptr<c74::min::inlet<>>> m_inlets;
+    std::vector<std::unique_ptr<c74::min::outlet<>>> m_outlets;
 
     c74::min::message<> dictionary;
     c74::min::message<> dry_wet;
     c74::min::message<> reset;
     c74::min::message<> dspsetup;
+    // c74::min::message<> dump;
 
     c74::min::attribute<int> threads {
         this, "threads", 0,
@@ -61,13 +58,25 @@ private:
         std::string backend;
         std::vector<int64_t> input_shape;
         std::vector<int64_t> output_shape;
+        std::vector<int64_t> preprocess_input_channels;
+        std::vector<int64_t> postprocess_output_channels;
+        std::vector<int64_t> preprocess_input_size;
+        std::vector<int64_t> postprocess_output_size;
         float max_inference_time;
     };
 
     bool m_threads_set = false;
 
+    std::string m_config_file_path;
+    int m_num_input_signals = 0;
+    int m_num_input_messages = 0;
+    int m_num_output_signals = 0;
+    int m_num_output_messages = 0;
+
+    void init_external(int sig_inputs, int sig_outputs, int msg_inputs, int msg_outputs);
     void prepare(size_t host_buffer_size, double host_sample_rate);
-    static ModelConfig extract_setup_from_dict(c74::min::dict& d);
+    void load_json_config(); // load json file directly 
+    static ModelConfig extract_setup_from_dict(c74::min::dict& d); // load a dict instead of json
     void setup_anira(ModelConfig& config);
     void reset_anira();
     void wait_for_model_load();
