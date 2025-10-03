@@ -5,10 +5,11 @@
 // - cleanup
 // - generalize set / get non-streamable inlets (the anything function currently only works for gain example)
 // - fix hardcoded channel input in process block 
-// - shift outlets / inlets into struct (clean indexing)
+// x shift outlets / inlets into struct (clean indexing)
 // - connect latency outlet
 // - latent parameter access / compression (sample value assignment)
 // - AniraProcessor.cpp 
+// - check we meet the num_inlets when max is pasing a message
 
 // general: 
 // - shift threads-definition to .cpp, only declare in .h
@@ -43,14 +44,47 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             const auto sample_rate = static_cast<double>(args[0]);
             const auto buffer_size = static_cast<size_t>(args[1]);            
             prepare(buffer_size, sample_rate);
+            initialized = true;
             return {};
         }
     ),
     bang(this, "bang", "Trigger processing",
         MIN_FUNCTION {
+            // for(int i = 0; i < m_msg_outlets.size(); ++i){
+            //     m_msg_outlets[i]->send(m_anira_processor->get_output(1, 0));
+            // } 
+            if (!initialized || m_anira_processor == nullptr) {
+                c74::max::error("anira~: External not initialized. Activate DSP.");
+                return {};
+            }
+
             for(int i = 0; i < m_msg_outlets.size(); ++i){
-                m_msg_outlets[i]->send(m_anira_processor->get_output(1, 0));
-            } 
+                if (m_msg_outlets[i].type != MaxType::MESSAGE) {
+                    continue;
+                }
+                size_t tensor_index = m_msg_outlets[i].tensor_index;
+                size_t num_channels = m_msg_outlets[i].num_channels;
+                std::vector<float> msg_data;
+                for(size_t j = 0; j < num_channels; ++j){
+                    msg_data.push_back(m_anira_processor->get_output(tensor_index, j));
+                }
+                if(num_channels == 1){
+                    m_msg_outlets[i].outlet->send(msg_data[0]);
+                } else {
+                    c74::min::atoms msg_atoms;
+                    msg_atoms.push_back("list");
+                    for(const auto& val : msg_data){
+                        msg_atoms.push_back(val);
+                    }
+                    m_msg_outlets[i].outlet->send(msg_atoms);
+                }
+            }
+
+            for(int i = 0; i < m_msg_outlets.size(); ++i){
+                if (m_msg_outlets[i].type == MaxType::LATENCY) {
+                    m_msg_outlets[i].outlet->send(static_cast<int>(m_anira_processor->get_latency_samples()));
+                }
+            }
             return {};
         }
     ),
@@ -58,37 +92,30 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
         MIN_FUNCTION {
             const int inlet_num = inlet;
             
-            // Print inlet index
             c74::max::post("anira~: Received data on inlet %d", inlet_num);
+            const size_t num_sig_inputs = m_sig_inlets.size();
+            const size_t msg_index = inlet_num - num_sig_inputs; 
             
-            // Print the incoming list
-            std::string data_str = "";
+            std::vector<float> msg_data;
+            if (m_msg_inlets[msg_index].num_channels != args.size() - 1) {
+                c74::max::error("anira~: Incorrect number of elements for inlet %zu. Expected %zu but got %zu.", msg_index + 1, m_msg_inlets[msg_index].num_channels, args.size() - 1);
+                return {};
+            }
 
-            // TODO implement check if
-            // args.size == (m_anira_processor->inShapes[index] / channel) + 1
-            // arg[0] == "list" 
             for (size_t i = 0; i < args.size(); ++i) {
-                // if (args[i].type() == c74::min::type::float_type) {
-                //     data_str += std::to_string(static_cast<float>(args[i]));
-                // } else if (args[i].type() == c74::min::type::int_type) {
-                //     data_str += std::to_string(static_cast<int>(args[i]));
-                // } else {
-                //     data_str += std::string(args[i]);
-                // }
-                // if (i < args.size() - 1) {
-                //     data_str += ", ";
-                // }
-                data_str += std::string(args[i]);
-            }
-            c74::max::post("anira~: Data: [%s]", data_str.c_str());
-            
-
-            // e.g. for gain example
-            float gain = static_cast<float>(args[1]);
-            if (m_anira_processor) {
-                m_anira_processor->set_input(gain, 1, 0);
+                if (i == 0){
+                    if(std::string(args[i]) != "list"){
+                        c74::max::error("anira~: Input not of type 'list', received: %s", std::string(args[i]).c_str());
+                        return {};
+                    }
+                } else {
+                    msg_data.push_back(static_cast<float>(args[i]));
+                }
             }
 
+            for(size_t i = 0; i < msg_data.size(); ++i){
+                m_anira_processor->set_input(msg_data[i], m_msg_inlets[msg_index].tensor_index, i);
+            }
             return {};
         }
     )
@@ -105,6 +132,10 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
         load_json_config();
         m_anira_processor = std::make_unique<AniraProcessor>(m_config_file_path);
 
+        c74::max::post("---> inSigCh: %zu", m_anira_processor->inSigCh.size());
+        c74::max::post("---> outSigCh: %zu", m_anira_processor->outSigCh.size());
+        c74::max::post("---> inMsgCh: %zu", m_anira_processor->inMsgCh.size());
+        c74::max::post("---> outMsgCh: %zu", m_anira_processor->outMsgCh.size());
         init_external(m_anira_processor->inSigCh, m_anira_processor->outSigCh, m_anira_processor->inMsgCh, m_anira_processor->outMsgCh);
     }     
 }
@@ -184,18 +215,35 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
 // }
 
 void AniraTilde::init_external(std::vector<size_t> sig_inputs, std::vector<size_t> sig_outputs, std::vector<std::vector<size_t>> msg_inputs, std::vector<std::vector<size_t>> msg_outputs) {
-    m_inlets.clear();
-    m_outlets.clear();
+    m_sig_inlets.clear();
+    m_msg_inlets.clear();
+    m_sig_outlets.clear();
+    m_msg_outlets.clear();
+
+    size_t last_audio_input_tensor = 0;
+    size_t last_audio_output_tensor = 0;
 
     for (int i = 0; i < sig_inputs.size(); ++i) {
+        last_audio_input_tensor++;
         for (int j = 0; j < sig_inputs[i]; ++j) {
-            m_inlets.push_back(std::make_unique<c74::min::inlet<>>(this, "(signal) Tensor " + std::to_string(i + 1) + ", Channel " + std::to_string(j + 1), "signal"));
+            Input input;
+            input.inlet = std::make_unique<c74::min::inlet<>>(this, "(signal) Tensor " + std::to_string(i + 1) + ", Channel " + std::to_string(j + 1), "signal");
+            input.type = MaxType::SIGNAL;
+            input.num_channels = 1;
+            input.tensor_index = i;
+            m_sig_inlets.push_back(std::move(input));
         }
     }
 
     for (int i = 0; i < sig_outputs.size(); ++i) {
+        last_audio_output_tensor++;
         for (int j = 0; j < sig_outputs[i]; ++j) {
-            m_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(signal) Tensor " + std::to_string(i + 1) + ", Channel " + std::to_string(j + 1), "signal"));
+            Output output; 
+            output.outlet = std::make_unique<c74::min::outlet<>>(this, "(signal) Tensor " + std::to_string(i + 1) + ", Channel " + std::to_string(j + 1), "signal");
+            output.type = MaxType::SIGNAL;
+            output.num_channels = 1;
+            output.tensor_index = i;
+            m_sig_outlets.push_back(std::move(output));
         }
     }
 
@@ -203,35 +251,36 @@ void AniraTilde::init_external(std::vector<size_t> sig_inputs, std::vector<size_
     for (int tensor = 0; tensor < msg_inputs.size(); ++tensor) {
         for (int channel = 0; channel < msg_inputs[tensor].size(); ++channel) {
             size_t num_inlets = msg_inputs[tensor][channel];
-            // TODO later check we meet the num_inlets when max is pasing a message
-            // TODO case sesnnsitivity check (list / float)
-            // TODO push meta data for outlet
-            if(num_inlets <= 1){
-                m_inlets.push_back(std::make_unique<c74::min::inlet<>>(this, "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1), "float"));
-
-            }
-            else {
-                m_inlets.push_back(std::make_unique<c74::min::inlet<>>(this, "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1), "list"));
-            }
+            Input input; 
+            // std::string type = (num_inlets <= 1) ? "float" : "list";
+            std::string type = (num_inlets <= 1) ? "list" : "list";
+            input.inlet = std::make_unique<c74::min::inlet<>>(this, "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1), type);
+            input.type = MaxType::MESSAGE;
+            input.num_channels = num_inlets;
+            input.tensor_index = tensor + last_audio_input_tensor;
+            m_msg_inlets.push_back(std::move(input));
         }
     }
 
     for (int tensor = 0; tensor < msg_outputs.size(); ++tensor) {
         for (int channel = 0; channel < msg_outputs[tensor].size(); ++channel) {
             size_t num_outlets = msg_outputs[tensor][channel];
-            // TODO later check we meet the num_outlets when max is pasing a message
-            // TODO case sesnnsitivity check (list / float)
-            // TODO push meta data for outlet
-            if(num_outlets <= 1){
-                m_msg_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1), "float"));
-            }
-            else {
-                m_msg_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1), "list"));
-            }
+            Output output; 
+            // std::string type = (num_outlets <= 1) ? "float" : "list";
+            std::string type = (num_outlets <= 1) ? "list" : "list";
+            output.outlet = std::make_unique<c74::min::outlet<>>(this, "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1), type);
+            output.type = MaxType::MESSAGE;
+            output.num_channels = num_outlets;
+            output.tensor_index = tensor + last_audio_output_tensor;
+            m_msg_outlets.push_back(std::move(output));
         }
     }
 
-    m_msg_outlets.push_back(std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int"));
+    Output output;
+    output.outlet = std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int");
+    output.type = MaxType::LATENCY;
+    output.num_channels = 1;
+    m_msg_outlets.push_back(std::move(output));
 }
 
 
@@ -244,6 +293,11 @@ void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
     if(m_anira_processor) {
         m_anira_processor->prepare(host_buffer_size, host_sample_rate);
         latency = static_cast<float>(m_anira_processor->get_latency_samples());
+        for(int i = 0; i < m_msg_outlets.size(); ++i){
+            if(m_msg_outlets[i].type == MaxType::LATENCY){
+                m_msg_outlets[i].outlet->send(static_cast<int>(latency));
+            }
+        }
     }
 
     m_dry_wet_mixer.prepare(
@@ -406,6 +460,18 @@ void AniraTilde::load_json_config() {
 // }
 
 std::string AniraTilde::vector_to_string(const std::vector<int64_t>& vec) {
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        oss << vec[i];
+        if (i < vec.size() - 1)
+            oss << ", ";
+    }
+    oss << "]";
+    return oss.str();
+}
+
+std::string AniraTilde::vector_to_string(const std::vector<size_t>& vec) {
     std::ostringstream oss;
     oss << "[";
     for (size_t i = 0; i < vec.size(); ++i) {

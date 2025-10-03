@@ -36,15 +36,24 @@ public:
         LATENCY = 2,
     };
 
+    struct Input {
+        std::unique_ptr<c74::min::inlet<>> inlet;
+        MaxType type;
+        size_t tensor_index;
+        size_t num_channels;
+    };
+
     struct Output {
         std::unique_ptr<c74::min::outlet<>> outlet;
         MaxType type;
-        size_t anira_index;
+        size_t tensor_index;
+        size_t num_channels;
     };
 
-    std::vector<std::unique_ptr<c74::min::inlet<>>> m_inlets;
-    std::vector<std::unique_ptr<c74::min::outlet<>>> m_outlets;
-    std::vector<std::unique_ptr<c74::min::outlet<>>> m_msg_outlets;
+    std::vector<Input> m_sig_inlets;
+    std::vector<Input> m_msg_inlets;
+    std::vector<Output> m_sig_outlets;
+    std::vector<Output> m_msg_outlets;
 
     // c74::min::message<> dictionary;
     c74::min::message<> dry_wet;
@@ -86,10 +95,12 @@ private:
     void init_external(std::vector<size_t> sig_inputs, std::vector<size_t> sig_outputs, std::vector<std::vector<size_t>> msg_inputs, std::vector<std::vector<size_t>> msg_outputs);
 
 
+    bool initialized = false;
     void prepare(size_t host_buffer_size, double host_sample_rate);
     void load_json_config();
 
     static std::string vector_to_string(const std::vector<int64_t>& vec);
+    static std::string vector_to_string(const std::vector<size_t>& vec);
 
 
     std::vector<std::vector<float>> m_wet_audio_data;
