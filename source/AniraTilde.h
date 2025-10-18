@@ -55,15 +55,19 @@ public:
     std::vector<Output> m_sig_outlets;
     std::vector<Output> m_msg_outlets;
 
-    // c74::min::message<> dictionary;
     c74::min::message<> dry_wet;
     c74::min::message<> reset;
     c74::min::message<> dspsetup;
     c74::min::message<> anything;
+    c74::min::message<> m_float;
+    c74::min::message<> m_int;
     c74::min::message<> bang;
     // c74::min::message<> dump;
 
+    bool m_bypass = false;
+
     void operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) override;
+    void parse_input_messages(int inlet_num, const std::vector<float>& args);
 
 private:
     std::string getJsonPath(const c74::min::atoms& args) {
