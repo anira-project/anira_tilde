@@ -10,7 +10,7 @@
 // x generalize set / get non-streamable inlets (the anything function currently only works for gain example)
 // x shift outlets / inlets into struct (clean indexing)
 // x solve file type issues (float, list, int)
-// x check we meet the num_inlets when max is pasing a message
+// x check we meet the num_inlets when max is passing a message
 // x fix hardcoded channel input in process block 
 
 // general: 
@@ -30,17 +30,16 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             return {};
         }
     ),
-    reset(this, "reset", "Clear current model configuration and reset internal state",
-        MIN_FUNCTION {
-            try {
-                // reset_anira();
-                c74::max::post("anira~: Model configuration reset successfully");
-            } catch (const std::exception& e) {
-                c74::max::error("anira~: Error during reset: %s", e.what());
-            }
-            return {};
-        }
-    ),
+    // reset(this, "reset", "Clear current model configuration and reset internal state",
+    //     MIN_FUNCTION {
+    //         try {
+    //             c74::max::post("anira~: Model configuration reset successfully");
+    //         } catch (const std::exception& e) {
+    //             c74::max::error("anira~: Error during reset: %s", e.what());
+    //         }
+    //         return {};
+    //     }
+    // ),
     dspsetup(this, "dspsetup",
         MIN_FUNCTION {
             const auto sample_rate = static_cast<double>(args[0]);
@@ -101,27 +100,6 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             return {};
         }
     ),
-    // anything(this, "list", "Receive lists in message inlets",
-    //     MIN_FUNCTION {
-    //         if(std::string(args[0]) == "bypass"){
-    //             if(args.size() > 1){
-    //                 m_bypass = static_cast<bool>(args[1]);
-    //                 c74::max::post("anira~: Bypass set to %s", m_bypass ? "true" : "false");
-    //             } else {
-    //                 const int inlet_num = inlet;
-    //                 std::vector<float> msg_data;
-    //                 msg_data.reserve(args.size()); 
-        
-    //                 for(size_t i = 0; i < args.size(); ++i) {
-    //                     msg_data.push_back(static_cast<float>(args[i]));
-    //                 }
-        
-    //                 parse_input_messages(inlet_num, msg_data);
-    //                 return {};
-    //             }
-    //         }
-    //     }
-    // ),
     m_float(this, "float", "Receive float in message inlets",
         MIN_FUNCTION {
             const int inlet_num = inlet;

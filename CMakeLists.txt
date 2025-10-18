@@ -40,6 +40,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/anira)
 
 add_library(${PROJECT_NAME} MODULE
     source/AniraTilde.cpp
+    source/dsp/AniraProcessor.cpp
     source/utils/Mixer.cpp
 )
 
