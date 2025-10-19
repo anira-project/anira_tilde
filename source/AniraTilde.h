@@ -56,7 +56,6 @@ public:
     std::vector<Output> m_msg_outlets;
 
     c74::min::message<> dry_wet;
-    // c74::min::message<> reset;
     c74::min::message<> dspsetup;
     c74::min::message<> anything;
     c74::min::message<> m_float;

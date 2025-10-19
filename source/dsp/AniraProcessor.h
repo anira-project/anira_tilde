@@ -20,6 +20,9 @@ public:
     std::vector<std::vector<size_t>> inMsgCh;
     std::vector<std::vector<size_t>> outMsgCh;
 
+    std::vector<size_t> input_sizes;
+    std::vector<size_t> output_sizes;
+
 private:
     anira::JsonConfigLoader m_config_loader;
     anira::ContextConfig m_anira_context;

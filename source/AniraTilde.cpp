@@ -1,9 +1,7 @@
 #include "AniraTilde.h"
 
 // OPEN
-// - cleanup
 // - latent parameter access / compression (sample value assignment)
-// - AniraProcessor.cpp 
 
 // DONE
 // x connect latency outlet
@@ -12,6 +10,8 @@
 // x solve file type issues (float, list, int)
 // x check we meet the num_inlets when max is passing a message
 // x fix hardcoded channel input in process block 
+// x AniraProcessor.cpp 
+// x cleanup
 
 // general: 
 // - shift threads-definition to .cpp, only declare in .h
@@ -30,16 +30,6 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             return {};
         }
     ),
-    // reset(this, "reset", "Clear current model configuration and reset internal state",
-    //     MIN_FUNCTION {
-    //         try {
-    //             c74::max::post("anira~: Model configuration reset successfully");
-    //         } catch (const std::exception& e) {
-    //             c74::max::error("anira~: Error during reset: %s", e.what());
-    //         }
-    //         return {};
-    //     }
-    // ),
     dspsetup(this, "dspsetup",
         MIN_FUNCTION {
             const auto sample_rate = static_cast<double>(args[0]);
@@ -133,11 +123,133 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
 AniraTilde::~AniraTilde() {
 }
 
+// // ---- Old Version ----
+// void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) {
+//     const auto num_channels = static_cast<size_t>(m_sig_inlets.size());
+//     const auto sample_count = static_cast<size_t>(input.frame_count());
+    
+//     for (int channel = 0; channel < num_channels; ++channel) {
+//         for (int sample = 0; sample < sample_count; ++sample) {
+//             auto value = static_cast<float>(input.samples(channel)[sample]);
+//             m_dry_audio_data[channel][sample] = value;
+//         }
+//     }
+
+//     float* input_data_ptr = m_dry_audio_data.data()->data();
+//     float* output_data_ptr = m_wet_audio_data.data()->data();
+//     const bool anira_initialized = m_anira_ready_to_process.load(std::memory_order_acquire);
+
+//     if (m_anira_processor)
+//     {
+//         float* inputs[1]  = { input_data_ptr };
+//         float* outputs[1] = { output_data_ptr };
+
+//         m_anira_processor->process(inputs, outputs, sample_count);
+//     }
+
+//     for (int channel = 0; channel < num_channels; ++channel) {
+//         for (int sample = 0; sample < sample_count; ++sample) {
+//             if (anira_initialized) {
+//                 m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
+//                 float value = m_dry_wet_mixer.mix_wet_sample(m_wet_audio_data[channel][sample], channel);
+//                 output.samples(channel)[sample] = static_cast<double>(value);
+//             } else {
+//                 float value = m_dry_audio_data[channel][sample];
+//                 output.samples(channel)[sample] = static_cast<double>(value);
+//             }
+//         }
+//     }
+
+//     if (m_anira_model_load_confirmed.load(std::memory_order_acquire) == false) {
+//         m_anira_model_load_confirmed.store(true, std::memory_order_release);
+//     }
+// }
+
+
+// // ---- Fixed Compression over all Tensors ----
+// void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) {
+//     const auto sample_count = static_cast<size_t>(input.frame_count());
+    
+//     for (int channel = 0; channel < m_sig_inlets.size(); ++channel) {
+//         for (int sample = 0; sample < sample_count; ++sample) {
+//             auto value = static_cast<float>(input.samples(channel)[sample]);
+//             m_dry_audio_data[channel][sample] = value;
+//         }
+//     }
+
+//     float* input_data_ptr = m_dry_audio_data.data()->data();
+//     float* output_data_ptr = m_wet_audio_data.data()->data();
+//     const bool anira_initialized = m_anira_ready_to_process.load(std::memory_order_acquire);
+
+//     if (m_anira_processor)
+//     {
+//         float* inputs[1]  = { input_data_ptr };
+//         float* outputs[1] = { output_data_ptr };
+
+//         m_anira_processor->process(inputs, outputs, sample_count);
+//     }
+
+//     // Handle output with compression ratio support
+//     const auto num_output_channels = m_sig_outlets.size();
+    
+//     for (int channel = 0; channel < num_output_channels; ++channel) {
+//         if (anira_initialized && m_anira_processor) {
+//             // Get compression ratio for this tensor
+//             const auto& input_sizes = m_anira_processor->input_sizes;
+//             const auto& output_sizes = m_anira_processor->output_sizes;
+            
+//             if (!input_sizes.empty() && !output_sizes.empty()) {
+//                 const size_t input_size = input_sizes[0];  // assuming first tensor
+//                 const size_t output_size = output_sizes[0];
+                
+//                 if (output_size > 0 && input_size >= output_size) {
+//                     const size_t compression_ratio = input_size / output_size;
+                    
+//                     for (int sample = 0; sample < sample_count; ++sample) {
+//                         const size_t output_index = sample / compression_ratio;
+//                         const size_t clamped_index = std::min(output_index, output_size - 1);
+                        
+//                         float wet_value = m_wet_audio_data[channel][clamped_index];
+//                         m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
+//                         float mixed_value = m_dry_wet_mixer.mix_wet_sample(wet_value, channel);
+//                         output.samples(channel)[sample] = static_cast<double>(mixed_value);
+//                     }
+//                 } else {
+//                     // one-to-one mapping
+//                     for (int sample = 0; sample < sample_count; ++sample) {
+//                         m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
+//                         float mixed_value = m_dry_wet_mixer.mix_wet_sample(m_wet_audio_data[channel][sample], channel);
+//                         output.samples(channel)[sample] = static_cast<double>(mixed_value);
+//                     }
+//                 }
+//             } else {
+//                 // one-to-one mapping
+//                 for (int sample = 0; sample < sample_count; ++sample) {
+//                     m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
+//                     float mixed_value = m_dry_wet_mixer.mix_wet_sample(m_wet_audio_data[channel][sample], channel);
+//                     output.samples(channel)[sample] = static_cast<double>(mixed_value);
+//                 }
+//             }
+//         } else {
+//             // pass-through instead
+//             for (int sample = 0; sample < sample_count; ++sample) {
+//                 float value = m_dry_audio_data[channel][sample];
+//                 output.samples(channel)[sample] = static_cast<double>(value);
+//             }
+//         }
+//     }
+
+//     if (m_anira_model_load_confirmed.load(std::memory_order_acquire) == false) {
+//         m_anira_model_load_confirmed.store(true, std::memory_order_release);
+//     }
+// }
+
+
+// ---- Dynamic Compression over all Tensors ----
 void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) {
-    const auto num_channels = static_cast<size_t>(m_sig_inlets.size());
     const auto sample_count = static_cast<size_t>(input.frame_count());
     
-    for (int channel = 0; channel < num_channels; ++channel) {
+    for (int channel = 0; channel < m_sig_inlets.size(); ++channel) {
         for (int sample = 0; sample < sample_count; ++sample) {
             auto value = static_cast<float>(input.samples(channel)[sample]);
             m_dry_audio_data[channel][sample] = value;
@@ -156,15 +268,64 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
         m_anira_processor->process(inputs, outputs, sample_count);
     }
 
-    for (int channel = 0; channel < num_channels; ++channel) {
-        for (int sample = 0; sample < sample_count; ++sample) {
-            if (anira_initialized) {
-                m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
-                float value = m_dry_wet_mixer.mix_wet_sample(m_wet_audio_data[channel][sample], channel);
-                output.samples(channel)[sample] = static_cast<double>(value);
+    const auto num_output_channels = m_sig_outlets.size();
+    
+    if (anira_initialized && m_anira_processor) {
+        const auto& input_sizes = m_anira_processor->input_sizes;
+        const auto& output_sizes = m_anira_processor->output_sizes;
+        
+        size_t output_channel_offset = 0;
+        
+        for (size_t tensor_idx = 0; tensor_idx < output_sizes.size() && output_channel_offset < num_output_channels; ++tensor_idx) {
+            // use the last available input size if fewer input than output sizes
+            const size_t input_idx = std::min(tensor_idx, input_sizes.size() - 1);
+            const size_t input_size = input_sizes[input_idx];
+            const size_t output_size = output_sizes[tensor_idx];
+            
+            if (output_size > 0 && input_size > 0) {
+                const size_t compression_ratio = input_size / output_size;
+                
+                const size_t channels_for_this_tensor = m_sig_outlets[output_channel_offset].num_channels;
+                
+                for (size_t ch = 0; ch < channels_for_this_tensor && output_channel_offset < num_output_channels; ++ch) {
+                    const size_t channel = output_channel_offset + ch;
+                    
+                    if (input_size >= output_size) {
+                        for (int sample = 0; sample < sample_count; ++sample) {
+                            const size_t output_index = sample / compression_ratio;
+                            const size_t clamped_index = std::min(output_index, output_size - 1);
+                            
+                            float wet_value = m_wet_audio_data[channel][clamped_index];
+                            m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
+                            float mixed_value = m_dry_wet_mixer.mix_wet_sample(wet_value, channel);
+                            output.samples(channel)[sample] = static_cast<double>(mixed_value);
+                        }
+                    } else {
+                        // one-to-one mapping
+                        for (int sample = 0; sample < sample_count; ++sample) {
+                            m_dry_wet_mixer.push_dry_sample(m_dry_audio_data[channel][sample], channel);
+                            float mixed_value = m_dry_wet_mixer.mix_wet_sample(m_wet_audio_data[channel][sample], channel);
+                            output.samples(channel)[sample] = static_cast<double>(mixed_value);
+                        }
+                    }
+                }
+                
+                output_channel_offset += channels_for_this_tensor;
             } else {
-                float value = m_dry_audio_data[channel][sample];
-                output.samples(channel)[sample] = static_cast<double>(value);
+                c74::max::error("anira~: Invalid input/output size for tensor %zu", tensor_idx);
+                break;
+            }
+        }
+    } else {
+        // pass through
+        for (int channel = 0; channel < num_output_channels; ++channel) {
+            for (int sample = 0; sample < sample_count; ++sample) {
+                if (channel < m_dry_audio_data.size()) {
+                    float value = m_dry_audio_data[channel][sample];
+                    output.samples(channel)[sample] = static_cast<double>(value);
+                } else {
+                    output.samples(channel)[sample] = 0.0;
+                }
             }
         }
     }
@@ -262,6 +423,7 @@ void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
         2,
         latency
     );
+    c74::max::post("anira~: --> signal inlets %d", m_sig_inlets.size());
 }
 
 void AniraTilde::parse_input_messages(int inlet_num, const std::vector<float>& args) {

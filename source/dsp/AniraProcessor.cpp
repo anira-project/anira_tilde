@@ -49,6 +49,9 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     auto outSz = processing_spec.m_postprocess_output_size;
     auto outCh = processing_spec.m_postprocess_output_channels;
 
+    input_sizes = inSz;
+    output_sizes = outSz;
+
     for (int i = 0; i < inShapes.size(); ++i) {
         if (inSz[i] > 0) {
             inSigCh.push_back(inCh[i]);
