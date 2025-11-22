@@ -1,5 +1,4 @@
 #include "AniraProcessor.h"
-// #include <c74_min.h>
 
 AniraProcessor::AniraProcessor(std::string json_config_path) :
     m_config_loader(json_config_path),
@@ -11,22 +10,6 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     std::vector<size_t> inShapes;
     std::vector<size_t> outShapes;
     auto processing_spec = m_inference_config.m_processing_spec;    
-
-    // for (int i = 0; i < processing_spec.m_preprocess_input_channels.size(); ++i) {
-    //     c74::max::post("Input Tensor %i Channels: %i", i, processing_spec.m_preprocess_input_channels[i]);
-    // }
-
-    // for (int i = 0; i < processing_spec.m_postprocess_output_channels.size(); ++i) {
-    //     c74::max::post("Output Tensor %i Channels: %i", i, processing_spec.m_postprocess_output_channels[i]);
-    // }
-
-    // for (int i = 0; i < processing_spec.m_preprocess_input_size.size(); ++i) {
-    //     c74::max::post("Input Tensor %i Preprocess Size: %i", i, processing_spec.m_preprocess_input_size[i]);
-    // }
-
-    // for (int i = 0; i < processing_spec.m_postprocess_output_size.size(); ++i) {
-    //     c74::max::post("Output Tensor %i Postprocess Size: %i", i, processing_spec.m_postprocess_output_size[i]);
-    // }
 
     for (int i = 0; i < m_inference_config.m_tensor_shape[0].m_tensor_input_shape.size(); ++i) {
         size_t size = 1;
@@ -108,9 +91,9 @@ size_t AniraProcessor::get_latency_samples()
     return m_inference_handler.get_latency();
 }
 
-void AniraProcessor::process(float** inputs, float** outputs, size_t sample_count) 
+size_t* AniraProcessor::process(const float* const* const* input_data, size_t* num_input_samples, float* const* const* output_data, size_t* num_output_samples)
 {
-    m_inference_handler.process(inputs, sample_count);
+    return m_inference_handler.process(input_data, num_input_samples, output_data, num_output_samples);
 }
 
 void AniraProcessor::set_input(const float& input, size_t i, size_t j) {

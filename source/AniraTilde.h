@@ -26,7 +26,7 @@ public:
         "At runtime a configuration file can be submitted as dictionary to load a model. " 
     };
     MIN_TAGS		{ "audio, ML, inference" };
-    MIN_AUTHOR		{ "Konstantin Fontaine, Valentin Ackva, Fares Schulz" };
+    MIN_AUTHOR		{ "Valentin Ackva, Fares Schulz, Konstantin Fontaine" };
     MIN_RELATED		{ "nn~" };
 
 
@@ -87,27 +87,28 @@ private:
     }
 
     bool m_valid_config_submitted = false;
-
     std::string m_config_file_path;
-    int m_num_input_signals = 0;
-    int m_num_input_messages = 0;
-    int m_num_output_signals = 0;
-    int m_num_output_messages = 0;
 
-    void init_external(int sig_inputs, int sig_outputs, int msg_inputs, int msg_outputs);
     void init_external(std::vector<size_t> sig_inputs, std::vector<size_t> sig_outputs, std::vector<std::vector<size_t>> msg_inputs, std::vector<std::vector<size_t>> msg_outputs);
-
 
     bool initialized = false;
     void prepare(size_t host_buffer_size, double host_sample_rate);
-    void load_json_config();
-
-    static std::string vector_to_string(const std::vector<int64_t>& vec);
-    static std::string vector_to_string(const std::vector<size_t>& vec);
+    void prepare_audio_buffers();
+    void prepare_latency_outlet(float latency);
 
 
     std::vector<std::vector<float>> m_wet_audio_data;
     std::vector<std::vector<float>> m_dry_audio_data;
+    
+    std::vector<std::vector<float*>> m_input_channel_ptr;   
+    std::vector<std::vector<float*>> m_output_channel_ptr;  
+    std::vector<float**> m_input_tensor_ptr;               
+    std::vector<float**> m_output_tensor_ptr;              
+    
+    size_t m_host_buffer_size = 0;
+    std::vector<size_t> m_input_sample_counts;
+    std::vector<size_t> m_output_sample_counts;
+    std::vector<float> m_last_valid_output;
 
     Mixer m_dry_wet_mixer;
 

@@ -11,7 +11,7 @@ public:
 
     void prepare(size_t buffer_size, double sample_rate);
     size_t get_latency_samples();
-    void process(float** inputs, float** outputs, size_t sample_count);
+    size_t* process(const float* const* const* input_data, size_t* num_input_samples, float* const* const* output_data, size_t* num_output_samples);
     void set_input(const float& input, size_t i, size_t j);
     float get_output(size_t i, size_t j);
 
