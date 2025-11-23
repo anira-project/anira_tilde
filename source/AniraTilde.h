@@ -97,6 +97,19 @@ private:
     void prepare_latency_outlet(float latency);
 
 
+    enum class FlowMode {
+        Standard,
+        RateLocked,
+        Adaptive // not yet in use
+    };
+
+    struct FlowControl {
+        FlowMode mode = FlowMode::Standard;
+        size_t samples_accumulated = 0;
+    };
+
+    std::vector<FlowControl> m_input_flow_states;
+
     std::vector<std::vector<float>> m_wet_audio_data;
     std::vector<std::vector<float>> m_dry_audio_data;
     
@@ -111,6 +124,8 @@ private:
     std::vector<float> m_last_valid_output;
 
     Mixer m_dry_wet_mixer;
+
+    int debug_callback_count = 0;
 
     std::unique_ptr<AniraProcessor> m_anira_processor;
 

@@ -121,6 +121,36 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
         const float* const* const* input_data = const_cast<const float* const* const*>(m_input_tensor_ptr.data());
         float* const* const* output_data = m_output_tensor_ptr.data();
         
+        for (size_t i = 0; i < m_input_sample_counts.size(); ++i) {
+            auto& state = m_input_flow_states[i];
+            
+            if (state.mode == FlowMode::RateLocked) {
+                size_t input_size = m_anira_processor->input_sizes[i];
+                size_t output_size = m_anira_processor->output_sizes[i];
+                
+                if (state.samples_accumulated >= output_size) {
+                    m_input_sample_counts[i] = input_size;
+                    state.samples_accumulated -= output_size;
+                    // // DEBUG: Print passed sample
+                    // if (input_size > 0 && m_input_channel_ptr.size() > i && !m_input_channel_ptr[i].empty()) {
+                    //     float val1 = m_input_channel_ptr[i][0][0]; // Tensor i, Channel 0, Sample 0
+                    //     c74::max::post("anira~ [RateLocked]: PASS block (acc=%zu). Channel=0, Sample[0]=%f", state.samples_accumulated + output_size, val1);
+                    //     float val2 = m_input_channel_ptr[i][1][0]; // Tensor i, Channel 1, Sample 0
+                    //     c74::max::post("anira~ [RateLocked]: PASS block (acc=%zu). Channel=1, Sample[0]=%f", state.samples_accumulated + output_size, val2);
+                    //     float val3 = m_input_channel_ptr[i][2][0]; // Tensor i, Channel 2, Sample 0
+                    //     c74::max::post("anira~ [RateLocked]: PASS block (acc=%zu). Channel=2, Sample[0]=%f", state.samples_accumulated + output_size, val3);
+                    //     float val4 = m_input_channel_ptr[i][3][0]; // Tensor i, Channel 3, Sample 0
+                    //     c74::max::post("anira~ [RateLocked]: PASS block (acc=%zu). Channel=3, Sample[0]=%f", state.samples_accumulated + output_size, val4);
+                    // }
+                } else {
+                    m_input_sample_counts[i] = 0;
+                }
+                state.samples_accumulated += m_host_buffer_size;
+            } else {
+                m_input_sample_counts[i] = m_host_buffer_size;
+            }
+        }
+
         for (size_t i = 0; i < m_output_sample_counts.size(); ++i) {
             size_t model_out = m_anira_processor->output_sizes[i];
             m_output_sample_counts[i] = (model_out > 0 && model_out < m_host_buffer_size) ? model_out : m_host_buffer_size;
@@ -128,6 +158,14 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
 
         m_anira_processor->process(input_data, m_input_sample_counts.data(), 
                                    output_data, m_output_sample_counts.data());
+        
+        // // DEBUG DECODER
+        // if (m_input_flow_states[0].mode == FlowMode::RateLocked) {
+        //     c74::max::post("Decoder Block: In=%zu, ReqOut=%zu, GotOut=%zu", 
+        //         m_input_sample_counts[0], 
+        //         256, 
+        //         m_output_sample_counts[0]);
+        // }
     }
     
     size_t num_output_channels = m_sig_outlets.size();
@@ -161,11 +199,41 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
         if (samples_retrieved > 0) {
             m_last_valid_output[channel] = m_wet_audio_data[channel][samples_retrieved - 1];
         }
+        
+        // // Debug: print chuncked output buffers
+        // if (samples_retrieved > 0) {
+        //     for (size_t ch = 0; ch < std::min(num_output_channels, size_t(4)); ++ch) {
+        //         for (size_t chunk = 0; chunk < sample_count; chunk += 8) {
+        //             std::ostringstream oss;
+        //             oss << "Final out ch" << ch << " [" << chunk << "-" << std::min(chunk + 7, sample_count - 1) << "] = [";
+        //             for (size_t i = chunk; i < std::min(chunk + 8, sample_count); ++i) {
+        //                 oss << output.samples(ch)[i];
+        //                 if (i < std::min(chunk + 7, sample_count - 1)) oss << ", ";
+        //             }
+        //             oss << "]";
+        //             c74::max::post("%s", oss.str().c_str());
+        //         }
+                
+        //         for (size_t chunk = 0; chunk < sample_count; chunk += 8) {
+        //             std::ostringstream oss2;
+        //             oss2 << "Final DW ch" << ch << " [" << chunk << "-" << std::min(chunk + 7, sample_count - 1) << "] = [";
+        //             for (size_t i = chunk; i < std::min(chunk + 8, sample_count); ++i) {
+        //                 oss2 << m_wet_audio_data[ch][i];
+        //                 if (i < std::min(chunk + 7, sample_count - 1)) oss2 << ", ";
+        //             }
+        //             oss2 << "]";
+        //             c74::max::post("%s", oss2.str().c_str());
+        //         }
+        //     }
+        // }
+        
     }
     
     if (m_anira_model_load_confirmed.load(std::memory_order_acquire) == false) {
         m_anira_model_load_confirmed.store(true, std::memory_order_release);
     }
+
+    debug_callback_count = debug_callback_count + 1;
 }
 
 
@@ -240,7 +308,31 @@ void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
     float latency = 0.f;
     
     if(m_anira_processor) {
-        m_anira_processor->prepare(host_buffer_size, host_sample_rate);
+        size_t effective_buffer_size = 0;
+        size_t num_inputs = m_anira_processor->input_sizes.size();
+        size_t num_outputs = m_anira_processor->output_sizes.size();
+        
+        // avoid buffer overflow during initialization
+        if (num_inputs == 0) {
+            effective_buffer_size = host_buffer_size;
+        } else {
+            for (size_t i = 0; i < num_inputs; ++i) {
+                size_t current_tensor_buffer_size = host_buffer_size;
+                
+                if (i < num_outputs) {
+                    if (m_anira_processor->input_sizes[i] < m_anira_processor->output_sizes[i]) {
+                        current_tensor_buffer_size = m_anira_processor->input_sizes[i];
+                    }
+                }
+                
+                if (current_tensor_buffer_size > effective_buffer_size) {
+                    effective_buffer_size = current_tensor_buffer_size;
+                }
+            }
+        }
+        if (effective_buffer_size == 0) effective_buffer_size = host_buffer_size;
+
+        m_anira_processor->prepare(effective_buffer_size, host_sample_rate);
         latency = static_cast<float>(m_anira_processor->get_latency_samples());
         
         prepare_audio_buffers();
@@ -263,6 +355,7 @@ void AniraTilde::prepare_audio_buffers() {
     m_output_tensor_ptr.clear();
     m_input_sample_counts.clear();
     m_output_sample_counts.clear();
+    m_input_flow_states.clear();
     
     // Input
     size_t input_channel_offset = 0;
@@ -277,8 +370,18 @@ void AniraTilde::prepare_audio_buffers() {
         m_input_channel_ptr.push_back(channel_pointers);
         input_channel_offset += num_channels;
         
-        // c74::max::post("anira~: Input Tensor %zu: %zu channel × %zu sample (model expects %zu)", 
-        //               tensor_idx, num_channels, m_host_buffer_size, m_anira_processor->input_sizes[tensor_idx]);
+        // Setup flow control for this tensor
+        FlowControl state;
+        if (tensor_idx < m_anira_processor->output_sizes.size()) {
+            // If input size is smaller than output size, assume decoder/expansion behavior
+            if (m_anira_processor->input_sizes[tensor_idx] < m_anira_processor->output_sizes[tensor_idx]) {
+                state.mode = FlowMode::RateLocked;
+                // Start with accumulator full to trigger first inference immediately
+                state.samples_accumulated = m_anira_processor->output_sizes[tensor_idx];
+                c74::max::post("anira~: Tensor %zu detected as Decoder (RateLocked mode)", tensor_idx);
+            }
+        }
+        m_input_flow_states.push_back(state);
     }
     
     for (size_t tensor_idx = 0; tensor_idx < m_input_channel_ptr.size(); ++tensor_idx) {
