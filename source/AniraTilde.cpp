@@ -1,7 +1,7 @@
 #include "AniraTilde.h"
 
 AniraTilde::AniraTilde(const c74::min::atoms& args) :
-    dry_wet(this, "mix", "Set the dry/wet mix of the output (0.0-100.0)",
+    dry_wet(this, "mix", "Set the dry/wet mix of the output",
         MIN_FUNCTION {
             if (m_mixing_disabled) {
                 c74::max::error("anira~: Mix parameter disabled for this model configuration.");
@@ -303,9 +303,6 @@ void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
 
     m_dry_wet_mixer.prepare(host_sample_rate, host_buffer_size, m_sig_outlets.size(), latency);
     m_anira_ready_to_process.store(true, std::memory_order_release);
-    
-    // c74::max::post("anira~: Prepared with %zu signal inlets and %zu signal outlets", 
-    //                m_sig_inlets.size(), m_sig_outlets.size());
 }
 
 void AniraTilde::prepare_audio_buffers() {

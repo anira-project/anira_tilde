@@ -17,8 +17,8 @@ public:
     MIN_DESCRIPTION { 
         "Neural network inference wrapper for Max. "
         "The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. "
-        "It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. "
-        "Configuration files are read at object initialization to dynamically set inlets and outlets for the external." 
+        "Inlets and outlets are dynamically configured during object initialization streamable (signal) and non-streamable (message) data. "
+        "The last outlet always outputs the processing latency." 
     };
     MIN_TAGS		{ "audio, ML, inference" };
     MIN_AUTHOR		{ "Valentin Ackva, Fares Schulz, Konstantin Fontaine" };
