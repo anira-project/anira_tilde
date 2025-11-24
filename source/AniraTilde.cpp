@@ -171,7 +171,7 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
                 
                 float wet_sample = 0.0f;
                 if (samples_retrieved > 0) {
-                    size_t read_idx = (sample < samples_retrieved) ? sample : (samples_retrieved - 1);
+                    size_t read_idx = sample % samples_retrieved;
                     wet_sample = m_wet_audio_data[channel][read_idx];
                 } else {
                     wet_sample = m_last_valid_output[channel];
