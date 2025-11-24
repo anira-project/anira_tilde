@@ -58,8 +58,6 @@ public:
     c74::min::message<> bang;
     // c74::min::message<> dump;
 
-    bool m_bypass = false;
-
     void operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) override;
     void parse_input_messages(int inlet_num, const std::vector<float>& args);
 

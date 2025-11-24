@@ -7,13 +7,13 @@
 <c74object name='anira~' category='audio,  ML,  inference'>
 
 	<digest>Neural network inference wrapper for Max</digest>
-	<description>Neural network inference wrapper for Max. The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. At runtime a configuration file can be submitted as dictionary to load a model. </description>
+	<description>Neural network inference wrapper for Max. The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. Configuration files are read at object initialization to dynamically set inlets and outlets for the external. </description>
 
 
 	<!--METADATA-->
 
 	<metadatalist>
-		<metadata name='author'>Konstantin Fontaine, Valentin Ackva, Fares Schulz </metadata>
+		<metadata name='author'>Valentin Ackva, Fares Schulz, Konstantin Fontaine </metadata>
 		<metadata name='tag'>audio</metadata>
 		<metadata name='tag'>ML</metadata>
 		<metadata name='tag'>inference</metadata>
@@ -31,19 +31,29 @@
 
 	<methodlist>
 
-		<method name='reset'>
-			<digest>Clear current model configuration and reset internal state </digest>
-			<description>Clear current model configuration and reset internal state </description>
+		<method name='list'>
+			<digest>Receive lists in message inlets </digest>
+			<description>Receive lists in message inlets </description>
+		</method>
+
+		<method name='bang'>
+			<digest>Output non-streamable parameters </digest>
+			<description>Output non-streamable parameters </description>
 		</method>
 
 		<method name='mix'>
-			<digest>Set the dry/wet mix of the output </digest>
-			<description>Set the dry/wet mix of the output </description>
+			<digest>Set the dry/wet mix of the output (0</digest>
+			<description>Set the dry/wet mix of the output (0.0-100.0) </description>
 		</method>
 
-		<method name='dictionary'>
-			<digest>Provide model configurations via json </digest>
-			<description>Provide model configurations via json </description>
+		<method name='float'>
+			<digest>Receive float in message inlets </digest>
+			<description>Receive float in message inlets </description>
+		</method>
+
+		<method name='int'>
+			<digest>Receive int in message inlets </digest>
+			<description>Receive int in message inlets </description>
 		</method>
 
 	</methodlist>
@@ -52,11 +62,6 @@
 	<!--ATTRIBUTES-->
 
 	<attributelist>
-
-		<attribute name='threads' get='1' set='1' type='long' size='1' >
-			<digest>Number of audio threads </digest>
-			<description>Number of audio threads </description>
-		</attribute>
 
 	</attributelist>
 

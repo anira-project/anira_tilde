@@ -1,7 +1,7 @@
 #include "AniraTilde.h"
 
 AniraTilde::AniraTilde(const c74::min::atoms& args) :
-    dry_wet(this, "mix", "Set the dry/wet mix of the output",
+    dry_wet(this, "mix", "Set the dry/wet mix of the output (0.0-100.0)",
         MIN_FUNCTION {
             if (m_mixing_disabled) {
                 c74::max::error("anira~: Mix parameter disabled for this model configuration.");
