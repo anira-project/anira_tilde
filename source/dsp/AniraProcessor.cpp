@@ -80,7 +80,25 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
         static_cast<float>(sample_rate),
     };
 
-    m_inference_handler.prepare(host_config);
+    size_t decoder_index = 0;
+    unsigned int decoder_latency = 0;
+    bool use_custom_latency = false;
+
+    for (size_t i = 0; i < output_sizes.size(); ++i) {
+        if (i < input_sizes.size() && input_sizes[i] < output_sizes[i]) {
+            decoder_index = i;
+            size_t safety_margin = (buffer_size > output_sizes[i]) ? buffer_size : output_sizes[i];
+            decoder_latency = static_cast<unsigned int>(output_sizes[i] + safety_margin);
+            use_custom_latency = true;
+            break; 
+        }
+    }
+
+    if (use_custom_latency) {
+        m_inference_handler.prepare(host_config, decoder_latency, decoder_index);
+    } else {
+        m_inference_handler.prepare(host_config);
+    }
 
     m_selected_backend = anira::InferenceBackend::LIBTORCH;
     m_inference_handler.set_inference_backend(m_selected_backend);

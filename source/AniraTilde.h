@@ -5,14 +5,9 @@
 #include <map>
 #include <vector>
 #include <string>
-#include <filesystem>
-#include <fstream>
 #include "utils/Mixer.h"
-#include "utils/json.hpp"
 
 #include "dsp/AniraProcessor.h"
-
-using json = nlohmann::json;
 
 class AniraTilde : public c74::min::object<AniraTilde>, public c74::min::vector_operator<> {
 public:
@@ -23,7 +18,7 @@ public:
         "Neural network inference wrapper for Max. "
         "The anira~ external integrates the <a href='https://github.com/anira-project/anira'>anira</a> library to offer neural network inference inside Max. "
         "It currently supports the following inference engines: LibTorch, ONNXRuntime, and TensorFlow Lite. "
-        "At runtime a configuration file can be submitted as dictionary to load a model. " 
+        "Configuration files are read at object initialization to dynamically set inlets and outlets for the external." 
     };
     MIN_TAGS		{ "audio, ML, inference" };
     MIN_AUTHOR		{ "Valentin Ackva, Fares Schulz, Konstantin Fontaine" };
@@ -71,14 +66,14 @@ public:
 private:
     std::string getJsonPath(const c74::min::atoms& args) {
         if (args.size() > 0) {
-            m_config_file_path = static_cast<std::string>(args[0]);
-            if (!m_config_file_path.empty() && std::filesystem::exists(m_config_file_path)) {
+            std::string input_path = static_cast<std::string>(args[0]);
+            c74::min::path p(input_path);
+            if (p) {
+                m_config_file_path = static_cast<std::string>(p);
                 c74::max::post("anira~: Loading config from: %s", m_config_file_path.c_str());
                 m_valid_config_submitted = true;
                 return m_config_file_path;
-            } 
-
-            c74::max::error("anira~: Config file not found: %s", m_config_file_path.c_str());
+            }
             return "";
         }
 
@@ -124,13 +119,11 @@ private:
     std::vector<float> m_last_valid_output;
 
     Mixer m_dry_wet_mixer;
-
-    int debug_callback_count = 0;
-
     std::unique_ptr<AniraProcessor> m_anira_processor;
 
     std::atomic<bool> m_anira_ready_to_process = false;
     std::atomic<bool> m_anira_model_load_confirmed = true;
+    bool m_mixing_disabled = false;
 
     inline const static std::unordered_map<std::string, anira::InferenceBackend> backend_map = {
         {"ONNX", anira::ONNX},
