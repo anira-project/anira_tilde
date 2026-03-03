@@ -48,5 +48,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${C74_INCLUDES}"
 )
 
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 target_link_libraries(${PROJECT_NAME} PRIVATE anira::anira)
 include(${C74_MIN_SCRIPT_DIR}/min-posttarget.cmake)
