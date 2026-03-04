@@ -92,7 +92,12 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
     getJsonPath(args);
 
     if (m_valid_config_submitted) {
-        m_anira_processor = std::make_unique<AniraProcessor>(m_config_file_path);
+        try {
+            m_anira_processor = std::make_unique<AniraProcessor>(m_config_file_path);
+        } catch (const std::exception& e) {
+            c74::max::object_error(nullptr, "anira~: Failed to load config: %s", e.what());
+            return;
+        }
 
         c74::max::post(
             "anira~: Signal input tensors: %zu, Signal output tensors: %zu, Message input tensors: %zu, Message output tensors: %zu",

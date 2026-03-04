@@ -1,10 +1,22 @@
 #include "AniraProcessor.h"
+#include <stdexcept>
+
+static anira::ContextConfig load_context_config(anira::JsonConfigLoader& loader) {
+    auto ptr = loader.get_context_config();
+    if (!ptr) throw std::runtime_error("Failed to load context config (JSON may be malformed)");
+    return std::move(*ptr);
+}
+
+static anira::InferenceConfig load_inference_config(anira::JsonConfigLoader& loader, const std::string& path) {
+    auto ptr = loader.get_inference_config();
+    if (!ptr) throw std::runtime_error("Failed to load inference config from: " + path + " (JSON may be malformed or missing 'inference_config' key)");
+    return std::move(*ptr);
+}
 
 AniraProcessor::AniraProcessor(std::string json_config_path) :
     m_config_loader(json_config_path),
-    m_anira_context(std::move(*m_config_loader.get_context_config())),
-    m_inference_config(std::move(*m_config_loader.get_inference_config())),
-    m_pp_processor(m_inference_config),
+    m_anira_context(load_context_config(m_config_loader)),
+    m_inference_config(load_inference_config(m_config_loader, json_config_path)),
     m_inference_handler(m_pp_processor, m_inference_config)
 {
     std::vector<size_t> inShapes;
