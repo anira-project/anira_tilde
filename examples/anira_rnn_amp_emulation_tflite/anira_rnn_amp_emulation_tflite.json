@@ -1,7 +1,14 @@
 {
-    "modelpath" : "path/to/stateful-lstm-dynamic.tflite",
-    "backend" : "TFLITE",
-    "input_shape" : [1, 2048, 1],
-    "output_shape" : [1, 2048, 1],
-	"max_inference_time" : 63.1
+    "inference_config": {
+        "model_data": [
+            { "model_path": "path/to/stateful-lstm-dynamic.tflite", "inference_backend": "TFLITE" }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [[1, 2048, 1]],
+                "output_shape": [[1, 2048, 1]]
+            }
+        ],
+        "max_inference_time": 63.1
+    }
 }

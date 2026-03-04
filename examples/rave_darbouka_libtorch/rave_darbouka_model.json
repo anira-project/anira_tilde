@@ -1,7 +1,14 @@
 {
-    "modelpath" : "path/to/darbouka_onnx.ts",
-    "backend" : "LIBTORCH",
-    "input_shape" : [1, 1, 2048],
-    "output_shape" : [1, 1, 2048],
-	"max_inference_time" : 63.1
+    "inference_config": {
+        "model_data": [
+            { "model_path": "path/to/darbouka_onnx.ts", "inference_backend": "LIBTORCH" }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [[1, 1, 2048]],
+                "output_shape": [[1, 1, 2048]]
+            }
+        ],
+        "max_inference_time": 63.1
+    }
 }

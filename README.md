@@ -8,40 +8,36 @@ The `anira~` external integrates the [anira](https://github.com/anira-project/an
 
 The external is initialized dynamically based on a JSON configuration file provided as argument, which determines the number of streamable (signal) and non-streamable (message) inlets and outlets of the object.
 
-The configuration file contains the following fields:
+The configuration file has a top-level `inference_config` object with the following fields:
 
-| Primary Fields   | Description                                                                                                                                                                                                                                                                                                                                                                                 |
-|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| model_path          | Path to the corresponding neural network model file (`.onnx`, `.ts`, `.tflite`, `.pt`). <br/> - Windows: `C:/Users/user/Documents/model.tflite` <br/> - macOS: `/Users/user/Documents/model.tflite`                                                                                                                                                                                             |
-| inference_backend   | Inference engine to use. Currently the following inference engines are available:<br/> - LibTorch: `LIBTORCH` <br/> - ONNX Runtime: `ONNX` <br/> - TensorFlow Lite: `TFLITE`                                                                                                                                                                                                                |
-| input_shape        | Shape of the input tensor, including the number of input samples and batch size. <br/> - Example: `[1, 2048, 1]`                                                                                                                                                                                                                                                                            |
-| output_shape       | Shape of the output tensor, including the number of output samples and batch size. <br/> - Example: `[1, 2048, 1]`                                                                                                                                                                                                                                                                          |
-| preprocess_input_size | Defines the buffer size for input tensors. Values > 0 define streamable signals and values of 0 define non-streamable messages. |
-| postprocess_output_size | Defines the buffer size for output tensors. Values > 0 define streamable signals and values of 0 define non-streamable messages. |
-| max_inference_time | The maximum time (in milliseconds) the inference needs to process the data with the given input and output shapes. If unsure, start with a high value (which results in higher latency) and gradually reduce it. Alternatively, use [anira's benchmarking](https://github.com/anira-project/anira/blob/main/docs/benchmark-usage.md) to automatically evaluate this. <br/>- Example: `63.1` |
+| Field (inside `inference_config`) | Required | Description |
+|------------------------------------|----------|-------------|
+| `model_data` | yes | Array of objects, each with `model_path` (path to `.onnx`, `.ts`, `.tflite`, or `.pt`) and `inference_backend` (`LIBTORCH`, `ONNX`, or `TFLITE`). |
+| `tensor_shape` | yes | Array of objects, each with `input_shape` and `output_shape` — arrays of per-tensor shapes (each shape is itself an array). |
+| `max_inference_time` | yes | Maximum inference time in milliseconds. If unsure, start high (higher latency) and reduce gradually. See [anira's benchmarking](https://github.com/anira-project/anira/blob/main/docs/benchmark-usage.md). |
+| `processing_spec` | no | Object with `preprocess_input_channels`, `preprocess_input_size`, `postprocess_output_channels`, and `postprocess_output_size` — one entry per tensor. Values > 0 in `*_size` define streamable signal inlets/outlets; 0 defines non-streamable message inlets/outlets. Auto-computed from tensor shapes when omitted (all tensors treated as single-channel signals). |
 
 The corresponding `.json` file for the model should look like this:
 
 Example configuration structure:
 ```json
 {
-    "model_path": "/path/to/model.pt",
-    "inference_backend": "LIBTORCH",
-    "max_inference_time": 5.0,
-    "tensor_shape": [
-      {
-        "input_shape": [[1, 1, 512],[1]],
-        "output_shape": [[1, 1, 512],[1]]
-      }
-    ],
-    "processing_spec": {
-        "preprocess_input_channels": [1, 1],
-        "postprocess_output_channels": [1, 1],
-        "preprocess_input_size": [512, 0],
-        "postprocess_output_size": [512, 0]
-    },
+    "inference_config": {
+        "model_data": [
+            { "model_path": "/path/to/model.pt", "inference_backend": "LIBTORCH" }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [[1, 1, 512]],
+                "output_shape": [[1, 1, 512]]
+            }
+        ],
+        "max_inference_time": 5.0
+    }
 }
 ```
+
+`processing_spec` is optional for simple models — the library auto-computes it from the tensor shapes, treating all tensors as single-channel signal tensors. It is required when you have non-streamable (message) tensors mixed with signal tensors.
 *(Note: For comprehensive documentation on the anira library and configuration file structure, please visit: [https://anira-project.github.io/anira/](https://anira-project.github.io/anira/))*
 
 ## Examples
