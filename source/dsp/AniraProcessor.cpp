@@ -1,4 +1,7 @@
 #include "AniraProcessor.h"
+
+#include <fstream>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 
 static anira::ContextConfig load_context_config(anira::JsonConfigLoader& loader) {
@@ -17,11 +20,13 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     m_config_loader(json_config_path),
     m_anira_context(load_context_config(m_config_loader)),
     m_inference_config(load_inference_config(m_config_loader, json_config_path)),
+    m_state_pairs(AniraProcessor::parse_state_pairs(json_config_path)),
+    m_pp_processor(m_inference_config, m_state_pairs),
     m_inference_handler(m_pp_processor, m_inference_config)
 {
     std::vector<size_t> inShapes;
     std::vector<size_t> outShapes;
-    auto processing_spec = m_inference_config.m_processing_spec;    
+    auto processing_spec = m_inference_config.m_processing_spec;
 
     for (int i = 0; i < m_inference_config.m_tensor_shape[0].m_tensor_input_shape.size(); ++i) {
         size_t size = 1;
@@ -47,9 +52,11 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     input_sizes = inSz;
     output_sizes = outSz;
 
-    for (int i = 0; i < inShapes.size(); ++i) {
+    for (int i = 0; i < (int)inShapes.size(); ++i) {
         if (inSz[i] > 0) {
             inSigCh.push_back(inCh[i]);
+        } else if (is_state_input(static_cast<size_t>(i))) {
+            // State input tensor: managed internally, not exposed as a Max inlet.
         } else {
             size_t channels = inCh[i];
             size_t total_elems = inShapes[i];
@@ -65,9 +72,11 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
             inMsgCh.push_back(msg_ch);
         }
     }
-    for (int i = 0; i < outShapes.size(); ++i) {
+    for (int i = 0; i < (int)outShapes.size(); ++i) {
         if (outSz[i] > 0) {
             outSigCh.push_back(outCh[i]);
+        } else if (is_state_output(static_cast<size_t>(i))) {
+            // State output tensor: fed back internally, not exposed as a Max outlet.
         } else {
             size_t channels = outCh[i];
             size_t total_elems = outShapes[i];
@@ -85,7 +94,7 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     }
 }
 
-void AniraProcessor::prepare(size_t buffer_size, double sample_rate) 
+void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
 {
     anira::HostConfig host_config {
         static_cast<float>(buffer_size),
@@ -102,7 +111,7 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
             size_t safety_margin = (buffer_size > output_sizes[i]) ? buffer_size : output_sizes[i];
             decoder_latency = static_cast<unsigned int>(output_sizes[i] + safety_margin);
             use_custom_latency = true;
-            break; 
+            break;
         }
     }
 
@@ -116,7 +125,7 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
     m_inference_handler.set_inference_backend(m_selected_backend);
 }
 
-size_t AniraProcessor::get_latency_samples() 
+size_t AniraProcessor::get_latency_samples()
 {
     return m_inference_handler.get_latency();
 }
@@ -132,4 +141,51 @@ void AniraProcessor::set_input(const float& input, size_t i, size_t j) {
 
 float AniraProcessor::get_output(size_t i, size_t j) {
     return m_pp_processor.get_output(i, j);
+}
+
+// ---- State pair helpers ----
+
+std::vector<StatePair> AniraProcessor::parse_state_pairs(const std::string& json_path) {
+    std::vector<StatePair> pairs;
+    if (json_path.empty()) return pairs;
+
+    std::ifstream file(json_path);
+    if (!file.is_open()) return pairs;
+
+    try {
+        nlohmann::json config;
+        file >> config;
+
+        if (!config.contains("state_config")) return pairs;
+        const auto& state_json = config.at("state_config");
+        if (!state_json.contains("state_pairs")) return pairs;
+
+        for (const auto& entry : state_json.at("state_pairs")) {
+            if (!entry.contains("output_tensor") || !entry.contains("input_tensor")) {
+                continue;
+            }
+            StatePair pair;
+            pair.output_tensor = entry.at("output_tensor").get<size_t>();
+            pair.input_tensor  = entry.at("input_tensor").get<size_t>();
+            pairs.push_back(pair);
+        }
+    } catch (...) {
+        // Return whatever was parsed before the error.
+    }
+
+    return pairs;
+}
+
+bool AniraProcessor::is_state_input(size_t tensor_index) const {
+    for (const auto& pair : m_state_pairs) {
+        if (pair.input_tensor == tensor_index) return true;
+    }
+    return false;
+}
+
+bool AniraProcessor::is_state_output(size_t tensor_index) const {
+    for (const auto& pair : m_state_pairs) {
+        if (pair.output_tensor == tensor_index) return true;
+    }
+    return false;
 }
