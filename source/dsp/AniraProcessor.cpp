@@ -1,7 +1,5 @@
 #include "AniraProcessor.h"
 
-#include <fstream>
-#include <nlohmann/json.hpp>
 #include <stdexcept>
 
 static anira::ContextConfig load_context_config(anira::JsonConfigLoader& loader) {
@@ -20,7 +18,7 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     m_config_loader(json_config_path),
     m_anira_context(load_context_config(m_config_loader)),
     m_inference_config(load_inference_config(m_config_loader, json_config_path)),
-    m_state_pairs(AniraProcessor::parse_state_pairs(json_config_path)),
+    m_state_pairs(parse_state_pairs(json_config_path)),
     m_pp_processor(m_inference_config, m_state_pairs),
     m_inference_handler(m_pp_processor, m_inference_config)
 {
@@ -141,39 +139,6 @@ void AniraProcessor::set_input(const float& input, size_t i, size_t j) {
 
 float AniraProcessor::get_output(size_t i, size_t j) {
     return m_pp_processor.get_output(i, j);
-}
-
-// ---- State pair helpers ----
-
-std::vector<StatePair> AniraProcessor::parse_state_pairs(const std::string& json_path) {
-    std::vector<StatePair> pairs;
-    if (json_path.empty()) return pairs;
-
-    std::ifstream file(json_path);
-    if (!file.is_open()) return pairs;
-
-    try {
-        nlohmann::json config;
-        file >> config;
-
-        if (!config.contains("state_config")) return pairs;
-        const auto& state_json = config.at("state_config");
-        if (!state_json.contains("state_pairs")) return pairs;
-
-        for (const auto& entry : state_json.at("state_pairs")) {
-            if (!entry.contains("output_tensor") || !entry.contains("input_tensor")) {
-                continue;
-            }
-            StatePair pair;
-            pair.output_tensor = entry.at("output_tensor").get<size_t>();
-            pair.input_tensor  = entry.at("input_tensor").get<size_t>();
-            pairs.push_back(pair);
-        }
-    } catch (...) {
-        // Return whatever was parsed before the error.
-    }
-
-    return pairs;
 }
 
 bool AniraProcessor::is_state_input(size_t tensor_index) const {

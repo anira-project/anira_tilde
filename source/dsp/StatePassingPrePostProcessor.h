@@ -2,11 +2,7 @@
 
 #include <anira/anira.h>
 #include <vector>
-
-struct StatePair {
-    size_t output_tensor;  // global output tensor index (must be non-streamable)
-    size_t input_tensor;   // global input tensor index (must be non-streamable)
-};
+#include "StatePairParser.h"
 
 // PrePostProcessor subclass for stateful (e.g. RNN) models where one or more
 // output tensors represent state to be passed back as input on the next inference.

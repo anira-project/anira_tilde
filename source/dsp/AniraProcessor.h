@@ -3,6 +3,7 @@
 #include <anira/anira.h>
 #include <vector>
 #include <string>
+#include "StatePairParser.h"
 #include "StatePassingPrePostProcessor.h"
 
 class AniraProcessor {
@@ -27,10 +28,6 @@ public:
     const std::vector<StatePair>& get_state_pairs() const { return m_state_pairs; }
 
 private:
-    // Parse "state_config.state_pairs" from the JSON file.
-    // Returns empty vector if the section is absent or on any parse error.
-    static std::vector<StatePair> parse_state_pairs(const std::string& json_path);
-
     bool is_state_input(size_t tensor_index) const;
     bool is_state_output(size_t tensor_index) const;
 
