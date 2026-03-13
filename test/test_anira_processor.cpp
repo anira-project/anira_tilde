@@ -7,6 +7,9 @@
 #ifndef SINE_OSC_JSON_PATH
 #error "SINE_OSC_JSON_PATH must be defined via CMake"
 #endif
+#ifndef SINE_OSC_RELATIVE_JSON_PATH
+#error "SINE_OSC_RELATIVE_JSON_PATH must be defined via CMake"
+#endif
 
 #ifdef USE_LIBTORCH
 
@@ -86,6 +89,11 @@ TEST(AniraProcessor, MaxLikeCallbackPatternAreContinuous) {
             check_step(blocks[blk].back(), blocks[blk+1].front(),
                        static_cast<size_t>(blk + 1) * kAPSineSignalSize);
     }
+}
+
+TEST(AniraProcessor, RelativeModelPathLoads) {
+    // Verifies that model_path values relative to the JSON config file are resolved correctly.
+    EXPECT_NO_THROW(AniraProcessor proc(SINE_OSC_RELATIVE_JSON_PATH));
 }
 
 #else  // !USE_LIBTORCH

@@ -31,6 +31,7 @@ target_compile_definitions(anira_tilde_tests PRIVATE
     STATE_TEST_MODEL_PATH="${CMAKE_SOURCE_DIR}/test/models/state_accumulator.pt"
     SINE_OSC_MODEL_PATH="${CMAKE_SOURCE_DIR}/test/models/sine_oscillator.pt"
     SINE_OSC_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/sine_oscillator_test.json"
+    SINE_OSC_RELATIVE_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/sine_oscillator_relative_test.json"
 )
 
 target_link_libraries(anira_tilde_tests
