@@ -11,7 +11,13 @@ static anira::ContextConfig load_context_config(anira::JsonConfigLoader& loader)
 static anira::InferenceConfig load_inference_config(anira::JsonConfigLoader& loader, const std::string& path) {
     auto ptr = loader.get_inference_config();
     if (!ptr) throw std::runtime_error("Failed to load inference config from: " + path + " (JSON may be malformed or missing 'inference_config' key)");
-    return std::move(*ptr);
+    auto config = std::move(*ptr);
+    // State passing requires strictly sequential inference: if two workers race,
+    // pre_process(N+1) may read stale state before post_process(N) has written it.
+    if (!parse_state_pairs(path).empty()) {
+        config.m_num_parallel_processors = 1;
+    }
+    return config;
 }
 
 AniraProcessor::AniraProcessor(std::string json_config_path) :
@@ -130,6 +136,19 @@ size_t AniraProcessor::get_latency_samples()
 
 size_t* AniraProcessor::process(const float* const* const* input_data, size_t* num_input_samples, float* const* const* output_data, size_t* num_output_samples)
 {
+    if (!m_state_pairs.empty()) {
+        // InferenceManager::process() calls new_data_submitted (pre_process, reads
+        // state) BEFORE new_data_request (post_process, writes state).  For
+        // state-passing models this means pre_process(N) always reads the state
+        // written by post_process(N-2), not post_process(N-1) — i.e. state is
+        // perpetually one inference stale.
+        //
+        // Fix: pop_data first so post_process(N-1) updates state atomics, then
+        // push_data so pre_process(N) reads the fresh value.
+        auto* result = m_inference_handler.pop_data(output_data, num_output_samples);
+        m_inference_handler.push_data(input_data, num_input_samples);
+        return result;
+    }
     return m_inference_handler.process(input_data, num_input_samples, output_data, num_output_samples);
 }
 
