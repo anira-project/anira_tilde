@@ -141,10 +141,13 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
     m_inference_handler.set_inference_backend(m_selected_backend);
 
     // --- Rate adaptation state ---
-    // Use signal tensor counts only: state tensors are managed internally by
-    // StatePassingPrePostProcessor and must not appear in push_data/pop_data arrays.
     size_t n_sig_in  = inSigCh.size();
     size_t n_sig_out = outSigCh.size();
+    // InferenceManager iterates ALL tensor indices (signal + state), so the adj
+    // arrays must cover every tensor.  State tensor entries are left at 0/nullptr:
+    // their loops never execute because preprocess/postprocess_size == 0.
+    size_t n_total_in  = input_sizes.size();
+    size_t n_total_out = output_sizes.size();
 
     m_sample_pos.assign(n_sig_in, 0);
 
@@ -155,18 +158,18 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
         m_ds_out_buf[i].assign(outSigCh[i], 0.0f);
     }
 
-    // Pre-allocate pointer arrays
-    m_adj_in_ch_ptrs.resize(n_sig_in);
-    m_adj_in_tensor_ptrs.resize(n_sig_in);
-    m_adj_in_sizes.assign(n_sig_in, 0);
+    // Pre-allocate pointer arrays (sized to total tensor count, not just signal tensors)
+    m_adj_in_ch_ptrs.resize(n_total_in);
+    m_adj_in_tensor_ptrs.assign(n_total_in, nullptr);
+    m_adj_in_sizes.assign(n_total_in, 0);
     for (size_t i = 0; i < n_sig_in; ++i) {
         m_adj_in_ch_ptrs[i].assign(inSigCh[i], nullptr);
         m_adj_in_tensor_ptrs[i] = m_adj_in_ch_ptrs[i].data();
     }
 
-    m_adj_out_ch_ptrs.resize(n_sig_out);
-    m_adj_out_tensor_ptrs.resize(n_sig_out);
-    m_adj_out_sizes.assign(n_sig_out, 0);
+    m_adj_out_ch_ptrs.resize(n_total_out);
+    m_adj_out_tensor_ptrs.assign(n_total_out, nullptr);
+    m_adj_out_sizes.assign(n_total_out, 0);
     for (size_t i = 0; i < n_sig_out; ++i) {
         m_adj_out_ch_ptrs[i].assign(outSigCh[i], nullptr);
         m_adj_out_tensor_ptrs[i] = m_adj_out_ch_ptrs[i].data();

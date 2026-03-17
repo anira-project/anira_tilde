@@ -30,6 +30,7 @@ target_compile_definitions(anira_tilde_tests PRIVATE
     SINE_OSC_RELATIVE_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/sine_oscillator_relative_test.json"
     RATE_ADAPT_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/rate_adapt_test.json"
     UPSAMPLE_STATE_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upsample_state_test.json"
+    UPSAMPLE_MULTISTATE_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/upsample_multistate_test.json"
     DOWNSAMPLE_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/downsample_test.json"
 )
 

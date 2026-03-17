@@ -9,6 +9,9 @@
 #ifndef UPSAMPLE_STATE_JSON_PATH
 #error "UPSAMPLE_STATE_JSON_PATH must be defined via CMake"
 #endif
+#ifndef UPSAMPLE_MULTISTATE_JSON_PATH
+#error "UPSAMPLE_MULTISTATE_JSON_PATH must be defined via CMake"
+#endif
 #ifndef DOWNSAMPLE_JSON_PATH
 #error "DOWNSAMPLE_JSON_PATH must be defined via CMake"
 #endif
@@ -254,6 +257,52 @@ TEST(RateAdaptation, UpsampleWithStateRateAdaptationAndStatePassedForward) {
     // Each pop drains exactly one inference worth of output (output_size=16 samples).
     // Consecutive inferences are separated by exactly 1 state increment, so delta == 1.
     EXPECT_FLOAT_EQ(v2 - v1, 1.0f) << "expected state delta of 1 between consecutive blocks; got " << (v2 - v1);
+}
+
+// ---------------------------------------------------------------------------
+// Upsample + MULTIPLE state tensors
+// Reproduces the crash where adj_out arrays were sized to n_sig_out (1) but
+// InferenceManager iterates all output tensors (3: 1 signal + 2 state).
+// The out-of-bounds read of num_samples[1] / num_samples[2] returns garbage;
+// with two state tensors this reliably hits non-zero memory and causes either
+// a SIGSEGV or memory corruption detectable via incorrect audio output.
+// ---------------------------------------------------------------------------
+TEST(RateAdaptation, UpsampleWithMultipleStateTensorsDoesNotCrash) {
+    AniraProcessor proc(UPSAMPLE_MULTISTATE_JSON_PATH);
+    proc.prepare(kRABuffer, kRASampleRate);
+
+    std::vector<float> in_buf(kRABuffer, 0.0f);
+    std::vector<float> out_buf(kRABuffer, 0.0f);
+
+    const float*        in_ch[1]    = { in_buf.data() };
+    float*              out_ch[1]   = { out_buf.data() };
+    const float* const* in_ptrs[1]  = { in_ch };
+    float* const*       out_ptrs[1] = { out_ch };
+    size_t in_sizes[1]  = { kRABuffer };
+    size_t out_sizes[1] = { kRABuffer };
+
+    auto run_callback = [&]() {
+        out_buf.assign(kRABuffer, 0.0f);
+        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
+        std::this_thread::sleep_for(kRACallbackMs);
+    };
+
+    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    for (int i = 0; i < warmup; ++i)
+        run_callback();
+
+    run_callback();
+    const float v1 = out_buf[0];
+    for (size_t i = 1; i < kRABuffer; ++i)
+        EXPECT_FLOAT_EQ(out_buf[i], v1) << "block1 sample " << i << " not uniform";
+
+    run_callback();
+    const float v2 = out_buf[0];
+    for (size_t i = 1; i < kRABuffer; ++i)
+        EXPECT_FLOAT_EQ(out_buf[i], v2) << "block2 sample " << i << " not uniform";
+
+    EXPECT_FLOAT_EQ(v2 - v1, 1.0f)
+        << "expected state delta of 1 between consecutive blocks; got " << (v2 - v1);
 }
 
 #else  // !USE_LIBTORCH
