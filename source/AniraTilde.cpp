@@ -1,4 +1,5 @@
 #include "AniraTilde.h"
+#include "dsp/effective_buffer_size.h"
 
 AniraTilde::AniraTilde(const c74::min::atoms& args) :
     dry_wet(this, "mix", "Set the dry/wet mix of the output",
@@ -279,29 +280,10 @@ void AniraTilde::prepare(size_t host_buffer_size, double host_sample_rate) {
     float latency = 0.f;
     
     if(m_anira_processor) {
-        size_t effective_buffer_size = 0;
-        size_t num_inputs = m_anira_processor->input_sizes.size();
-        size_t num_outputs = m_anira_processor->output_sizes.size();
-        
-        // avoid buffer overflow during initialization of decoder
-        if (num_inputs == 0) {
-            effective_buffer_size = host_buffer_size;
-        } else {
-            for (size_t i = 0; i < num_inputs; ++i) {
-                size_t current_tensor_buffer_size = host_buffer_size;
-                
-                if (i < num_outputs) {
-                    if (m_anira_processor->input_sizes[i] < m_anira_processor->output_sizes[i]) {
-                        current_tensor_buffer_size = m_anira_processor->input_sizes[i];
-                    }
-                }
-                
-                if (current_tensor_buffer_size > effective_buffer_size) {
-                    effective_buffer_size = current_tensor_buffer_size;
-                }
-            }
-        }
-        if (effective_buffer_size == 0) effective_buffer_size = host_buffer_size;
+        size_t effective_buffer_size = compute_effective_buffer_size(
+            m_anira_processor->input_sizes,
+            m_anira_processor->output_sizes,
+            host_buffer_size);
 
         m_anira_processor->prepare(effective_buffer_size, host_sample_rate);
         latency = static_cast<float>(m_anira_processor->get_latency_samples());

@@ -14,6 +14,7 @@ add_executable(anira_tilde_tests
     test_state_passing.cpp
     test_anira_processor.cpp
     test_rate_adaptation.cpp
+    test_effective_buffer_size.cpp
     ${CMAKE_SOURCE_DIR}/source/dsp/StatePairParser.cpp
     ${CMAKE_SOURCE_DIR}/source/dsp/AniraProcessor.cpp
 )
