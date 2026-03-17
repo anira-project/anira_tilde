@@ -40,6 +40,13 @@ Example configuration structure:
 `processing_spec` is optional for simple models — the library auto-computes it from the tensor shapes, treating all tensors as single-channel signal tensors. It is required when you have non-streamable (message) tensors mixed with signal tensors.
 *(Note: For comprehensive documentation on the anira library and configuration file structure, please visit: [https://anira-project.github.io/anira/](https://anira-project.github.io/anira/))*
 
+## Rate-adapting models (latent ↔ audio)
+
+Models where `preprocess_input_size ≠ postprocess_output_size` (e.g. a latent decoder that takes 1 latent frame and produces 2048 audio samples) are handled automatically — no extra configuration required. The ratio `N = max(output_size, input_size) / min(output_size, input_size)` must be a positive integer; non-integer ratios are not supported.
+
+- **input\_size < output\_size** (latent → audio): inference fires once per group of `input_size` samples; the larger audio output is drained across subsequent callbacks.
+- **input\_size > output\_size** (audio → latent): anira accumulates `input_size` samples before firing inference; the output is held until the next inference.
+
 ## State-passing models
 
 Models that pass internal state between inferences (e.g. RNNs/LSTMs) can be configured with an optional `state_config` block. This tells `anira~` which output tensor holds the new state and which input tensor expects the previous state. After each inference the state output is automatically fed back as the state input — no manual routing in Max is needed.
