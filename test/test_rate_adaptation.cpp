@@ -65,21 +65,17 @@ TEST(RateAdaptation, UpsampleUsesFirstSampleAtBoundary) {
         EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i;
 }
 
-// Verify that the inference boundary falls exactly every output_size samples:
-// input 0.0 for the first output_size samples, then 1.0.  The first inference
-// (fired at sample 0) should produce 0.0 output; the second (fired at sample
-// output_size=32) should produce 1.0 output.
+// Verify that the inference boundary falls exactly every output_size samples.
 TEST(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
     AniraProcessor proc(RATE_ADAPT_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
-    // Two separate input buffers: zeros and ones.
     std::vector<float> zero_buf(kRABuffer, 0.0f);
     std::vector<float> one_buf(kRABuffer, 1.0f);
     std::vector<float> out_buf(kRABuffer, 0.0f);
 
-    float*             out_ch[1]      = { out_buf.data() };
-    float* const*      out_ptrs[1]    = { out_ch };
+    float*             out_ch[1]   = { out_buf.data() };
+    float* const*      out_ptrs[1] = { out_ch };
     size_t out_sizes[1] = { kRABuffer };
 
     auto run_with = [&](const std::vector<float>& in) {
@@ -91,24 +87,35 @@ TEST(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
         std::this_thread::sleep_for(kRACallbackMs);
     };
 
-    // --- Warm-up phase: push zeros until output is stable ---
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    int latency = static_cast<int>(proc.get_latency_samples() / kRABuffer);
+    int warmup = latency + 2;
     for (int i = 0; i < warmup; ++i)
         run_with(zero_buf);
 
-    // output_size=32 == 2 * kRABuffer=16, so exactly 2 callbacks per inference.
-    // Drain remaining zeros output (2 callbacks worth).
-    run_with(zero_buf);  // callback A: boundary → fires zero-inference, pops zeros
-    run_with(zero_buf);  // callback B: no boundary, pops zeros
-    // Now the ring buffer is empty and the NEXT boundary fires with whatever we push.
+    // run one block (32 samples) with ones, then run inferences with zeros until latency has passed, 
+    // then check that we get the same as output
+    run_with(one_buf);
+    run_with(one_buf);
 
-    // Push two callbacks of ones (covers one full output_size=32 window).
-    run_with(one_buf);   // callback C: boundary → fires one-inference, pops (older zeros)
-    run_with(one_buf);   // callback D: no boundary, pops from one-inference output
+    // Wait for remaining latency to pass after the two inferences above
+    for (int i = 0; i < latency - 2; ++i)
+        run_with(zero_buf);
 
-    // After callback D, out_buf should contain the first 16 of the 32 ones.
     for (size_t i = 0; i < kRABuffer; ++i)
-        EXPECT_FLOAT_EQ(out_buf[i], 1.0f) << "sample " << i << " from one-inference";
+        EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i << " ones appeared too early";
+
+    // The next two runs (16 samples) should return ones - 32x upsampler
+    for (int i = 0; i < 2; ++i) {
+        run_with(zero_buf);
+        
+        for (size_t i = 0; i < kRABuffer; ++i)
+            EXPECT_FLOAT_EQ(out_buf[i], 1.0f) << "sample " << i << " from one-inference";
+    }
+    
+    run_with(zero_buf);
+
+    for (size_t i = 0; i < kRABuffer; ++i)
+        EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i << " should return to zero";
 }
 
 // ---------------------------------------------------------------------------
