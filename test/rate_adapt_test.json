@@ -1,0 +1,23 @@
+{
+  "inference_config": {
+    "model_data": [
+      {
+        "model_path": "models/upsampler_x32.pt",
+        "inference_backend": "LIBTORCH"
+      }
+    ],
+    "tensor_shape": [
+      {
+        "input_shape": [[1, 1, 1]],
+        "output_shape": [[1, 1, 32]]
+      }
+    ],
+    "processing_spec": {
+      "preprocess_input_channels": [1],
+      "postprocess_output_channels": [1],
+      "preprocess_input_size": [1],
+      "postprocess_output_size": [32]
+    },
+    "max_inference_time": 10.0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "inference_config": {
+    "model_data": [
+      { "model_path": "models/upsample_state.pt", "inference_backend": "LIBTORCH" }
+    ],
+    "tensor_shape": [
+      {
+        "input_shape":  [[1, 1, 1], [1, 4]],
+        "output_shape": [[1, 1, 16], [1, 4]]
+      }
+    ],
+    "processing_spec": {
+      "preprocess_input_channels":   [1, 1],
+      "postprocess_output_channels": [1, 1],
+      "preprocess_input_size":       [1, 0],
+      "postprocess_output_size":     [16, 0]
+    },
+    "max_inference_time": 10.0
+  },
+  "state_config": {
+    "state_pairs": [
+      { "output_tensor": 1, "input_tensor": 1 }
+    ]
+  }
+}
