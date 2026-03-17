@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build cmake-build-debug --target anira_tilde_tests)",
+      "Bash(ctest:*)"
+    ]
+  }
+}

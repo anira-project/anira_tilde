@@ -31,6 +31,10 @@ private:
     bool is_state_input(size_t tensor_index) const;
     bool is_state_output(size_t tensor_index) const;
 
+    // Rate adaptation helpers
+    bool is_upsample(size_t i) const;
+    bool is_downsample(size_t i) const;
+
     // NOTE: declaration order matches construction order in the initializer list.
     anira::JsonConfigLoader m_config_loader;
     anira::ContextConfig m_anira_context;
@@ -40,4 +44,17 @@ private:
     anira::InferenceHandler m_inference_handler;
 
     anira::InferenceBackend m_selected_backend;
+
+    // Rate adaptation state (populated in prepare())
+    std::vector<size_t> m_sample_pos;             // upsample: absolute sample counter per tensor
+    std::vector<std::vector<float>> m_hold_output; // downsample: held value [tensor][channel]
+    std::vector<std::vector<float>> m_ds_out_buf;  // downsample: 1-sample pop buffer [tensor][channel]
+
+    // Pre-allocated pointer arrays for adjusted push/pop (avoid RT allocation)
+    std::vector<std::vector<const float*>> m_adj_in_ch_ptrs;  // [tensor][channel]
+    std::vector<const float**>             m_adj_in_tensor_ptrs;
+    std::vector<size_t>                    m_adj_in_sizes;
+    std::vector<std::vector<float*>>       m_adj_out_ch_ptrs;  // [tensor][channel]
+    std::vector<float**>                   m_adj_out_tensor_ptrs;
+    std::vector<size_t>                    m_adj_out_sizes;
 };

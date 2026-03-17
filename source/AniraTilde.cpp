@@ -134,39 +134,13 @@ void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle
     {
         const float* const* const* input_data = const_cast<const float* const* const*>(m_input_tensor_ptr.data());
         float* const* const* output_data = m_output_tensor_ptr.data();
-        
-        for (size_t i = 0; i < m_input_sample_counts.size(); ++i) {
-            auto& state = m_input_flow_states[i];
-            
-            if (state.mode == FlowMode::RateLocked) {
-                size_t input_size = m_anira_processor->input_sizes[i];
-                size_t output_size = m_anira_processor->output_sizes[i];
-                
-                if (state.samples_accumulated >= output_size) {
-                    m_input_sample_counts[i] = input_size;
-                    state.samples_accumulated -= output_size;
-                } else {
-                    m_input_sample_counts[i] = 0;
-                }
-                state.samples_accumulated += m_host_buffer_size;
-            } else {
-                m_input_sample_counts[i] = m_host_buffer_size;
-            }
-        }
 
-        size_t primary_input_size = (m_anira_processor->input_sizes.empty()) ? 0 : m_anira_processor->input_sizes[0];
+        // Rate adaptation is handled inside AniraProcessor::process().
+        // Always pass the host buffer size for all tensors.
+        std::fill(m_input_sample_counts.begin(),  m_input_sample_counts.end(),  m_host_buffer_size);
+        std::fill(m_output_sample_counts.begin(), m_output_sample_counts.end(), m_host_buffer_size);
 
-        for (size_t i = 0; i < m_output_sample_counts.size(); ++i) {
-            size_t model_out = m_anira_processor->output_sizes[i];
-            
-            if (primary_input_size > model_out) {
-                m_output_sample_counts[i] = (model_out > 0 && model_out < m_host_buffer_size) ? model_out : m_host_buffer_size;
-            } else {
-                m_output_sample_counts[i] = m_host_buffer_size;
-            }
-        }
-
-        m_anira_processor->process(input_data, m_input_sample_counts.data(), 
+        m_anira_processor->process(input_data, m_input_sample_counts.data(),
                                    output_data, m_output_sample_counts.data());
     }
     
@@ -305,13 +279,22 @@ void AniraTilde::prepare_audio_buffers() {
     m_output_tensor_ptr.clear();
     m_input_sample_counts.clear();
     m_output_sample_counts.clear();
-    m_input_flow_states.clear();
     m_mixing_disabled = false;
-    
+
+    // Disable dry/wet mixing when input and output rates or channel counts differ.
+    for (size_t i = 0; i < m_anira_processor->inSigCh.size() && i < m_anira_processor->outSigCh.size(); ++i) {
+        if (m_anira_processor->input_sizes[i] != m_anira_processor->output_sizes[i]
+            || m_anira_processor->inSigCh[i] != m_anira_processor->outSigCh[i]) {
+            m_mixing_disabled = true;
+            break;
+        }
+    }
+    if (m_mixing_disabled)
+        m_dry_wet_mixer.set_mix(1.0f);
+
     size_t input_channel_offset = 0;
     for (size_t tensor_idx = 0; tensor_idx < m_anira_processor->inSigCh.size(); ++tensor_idx) {
         const size_t num_channels = m_anira_processor->inSigCh[tensor_idx];
-        
         std::vector<float*> channel_pointers;
         for (size_t channel = 0; channel < num_channels; ++channel) {
             m_dry_audio_data.emplace_back(m_host_buffer_size, 0.0f);
@@ -319,37 +302,13 @@ void AniraTilde::prepare_audio_buffers() {
         }
         m_input_channel_ptr.push_back(channel_pointers);
         input_channel_offset += num_channels;
-        
-        FlowControl state;
-        if (tensor_idx < m_anira_processor->output_sizes.size()) {
-            if (m_anira_processor->input_sizes[tensor_idx] < m_anira_processor->output_sizes[tensor_idx]) {
-                state.mode = FlowMode::RateLocked;
-                state.samples_accumulated = m_anira_processor->output_sizes[tensor_idx];
-                m_mixing_disabled = true;
-            }
-            else if (m_anira_processor->input_sizes[tensor_idx] > m_anira_processor->output_sizes[tensor_idx]) {
-                m_mixing_disabled = true;
-            }
-            else if (m_anira_processor->inSigCh[tensor_idx] != m_anira_processor->outSigCh[tensor_idx]) {
-                m_mixing_disabled = true;
-            }
-        }
-        m_input_flow_states.push_back(state);
-    }
-
-    if (m_mixing_disabled) {
-        m_dry_wet_mixer.set_mix(1.0f);
-    }
-    
-    for (size_t tensor_idx = 0; tensor_idx < m_input_channel_ptr.size(); ++tensor_idx) {
         m_input_tensor_ptr.push_back(m_input_channel_ptr[tensor_idx].data());
         m_input_sample_counts.push_back(m_host_buffer_size);
     }
-    
+
     size_t output_channel_offset = 0;
     for (size_t tensor_idx = 0; tensor_idx < m_anira_processor->outSigCh.size(); ++tensor_idx) {
         const size_t num_channels = m_anira_processor->outSigCh[tensor_idx];
-        
         std::vector<float*> channel_pointers;
         for (size_t channel = 0; channel < num_channels; ++channel) {
             m_wet_audio_data.emplace_back(m_host_buffer_size, 0.0f);
@@ -357,14 +316,9 @@ void AniraTilde::prepare_audio_buffers() {
         }
         m_output_channel_ptr.push_back(channel_pointers);
         output_channel_offset += num_channels;
-    }
-    
-    for (size_t tensor_idx = 0; tensor_idx < m_output_channel_ptr.size(); ++tensor_idx) {
         m_output_tensor_ptr.push_back(m_output_channel_ptr[tensor_idx].data());
-        
-        const size_t model_out = m_anira_processor->output_sizes[tensor_idx];
-        const size_t request_size = (model_out > 0 && model_out < m_host_buffer_size) ? model_out : m_host_buffer_size;
-        m_output_sample_counts.push_back(request_size);
+        // Rate adaptation always fills the full host buffer in the output.
+        m_output_sample_counts.push_back(m_host_buffer_size);
     }
 
     m_last_valid_output.assign(m_wet_audio_data.size(), 0.0f);

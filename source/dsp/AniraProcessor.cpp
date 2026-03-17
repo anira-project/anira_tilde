@@ -139,6 +139,39 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
 
     m_selected_backend = anira::InferenceBackend::LIBTORCH;
     m_inference_handler.set_inference_backend(m_selected_backend);
+
+    // --- Rate adaptation state ---
+    // Use signal tensor counts only: state tensors are managed internally by
+    // StatePassingPrePostProcessor and must not appear in push_data/pop_data arrays.
+    size_t n_sig_in  = inSigCh.size();
+    size_t n_sig_out = outSigCh.size();
+
+    m_sample_pos.assign(n_sig_in, 0);
+
+    m_hold_output.resize(n_sig_out);
+    m_ds_out_buf.resize(n_sig_out);
+    for (size_t i = 0; i < n_sig_out; ++i) {
+        m_hold_output[i].assign(outSigCh[i], 0.0f);
+        m_ds_out_buf[i].assign(outSigCh[i], 0.0f);
+    }
+
+    // Pre-allocate pointer arrays
+    m_adj_in_ch_ptrs.resize(n_sig_in);
+    m_adj_in_tensor_ptrs.resize(n_sig_in);
+    m_adj_in_sizes.assign(n_sig_in, 0);
+    for (size_t i = 0; i < n_sig_in; ++i) {
+        m_adj_in_ch_ptrs[i].assign(inSigCh[i], nullptr);
+        m_adj_in_tensor_ptrs[i] = m_adj_in_ch_ptrs[i].data();
+    }
+
+    m_adj_out_ch_ptrs.resize(n_sig_out);
+    m_adj_out_tensor_ptrs.resize(n_sig_out);
+    m_adj_out_sizes.assign(n_sig_out, 0);
+    for (size_t i = 0; i < n_sig_out; ++i) {
+        m_adj_out_ch_ptrs[i].assign(outSigCh[i], nullptr);
+        m_adj_out_tensor_ptrs[i] = m_adj_out_ch_ptrs[i].data();
+    }
+
 }
 
 size_t AniraProcessor::get_latency_samples()
@@ -148,20 +181,121 @@ size_t AniraProcessor::get_latency_samples()
 
 size_t* AniraProcessor::process(const float* const* const* input_data, size_t* num_input_samples, float* const* const* output_data, size_t* num_output_samples)
 {
-    if (!m_state_pairs.empty()) {
-        // InferenceManager::process() calls new_data_submitted (pre_process, reads
-        // state) BEFORE new_data_request (post_process, writes state).  For
-        // state-passing models this means pre_process(N) always reads the state
-        // written by post_process(N-2), not post_process(N-1) — i.e. state is
-        // perpetually one inference stale.
-        //
-        // Fix: pop_data first so post_process(N-1) updates state atomics, then
-        // push_data so pre_process(N) reads the fresh value.
-        auto* result = m_inference_handler.pop_data(output_data, num_output_samples);
-        m_inference_handler.push_data(input_data, num_input_samples);
-        return result;
+    // Use signal tensor counts: state tensors are internal to the pre-post processor.
+    size_t n_in  = inSigCh.size();
+    size_t n_out = outSigCh.size();
+
+    // Check whether any tensor needs rate adaptation.
+    bool needs_rate_adapt = false;
+    for (size_t i = 0; i < n_in && i < n_out; ++i) {
+        if (is_upsample(i) || is_downsample(i)) { needs_rate_adapt = true; break; }
     }
-    return m_inference_handler.process(input_data, num_input_samples, output_data, num_output_samples);
+
+    if (!needs_rate_adapt) {
+        // State-passing: pop first so post_process(N-1) writes fresh state before
+        // pre_process(N) reads it.
+        if (!m_state_pairs.empty()) {
+            auto* result = m_inference_handler.pop_data(output_data, num_output_samples);
+            m_inference_handler.push_data(input_data, num_input_samples);
+            return result;
+        }
+        return m_inference_handler.process(input_data, num_input_samples, output_data, num_output_samples);
+    }
+
+    // --- Build adjusted input arrays ---
+    for (size_t i = 0; i < n_in; ++i) {
+        size_t n      = num_input_samples[i];
+        size_t num_ch = inSigCh[i];
+
+        if (i < n_out && is_upsample(i)) {
+            // Fire one inference per output_size boundary within this callback.
+            size_t pos    = m_sample_pos[i];
+            size_t out_sz = output_sizes[i];
+            // First boundary at or after pos:
+            size_t boundary = (pos % out_sz == 0) ? pos : ((pos / out_sz) + 1) * out_sz;
+
+            if (boundary < pos + n) {
+                size_t offset = boundary - pos;
+                m_adj_in_sizes[i] = input_sizes[i];
+                for (size_t c = 0; c < num_ch; ++c)
+                    m_adj_in_ch_ptrs[i][c] = input_data[i][c] + offset;
+            } else {
+                m_adj_in_sizes[i] = 0;
+                for (size_t c = 0; c < num_ch; ++c)
+                    m_adj_in_ch_ptrs[i][c] = input_data[i][c]; // unused (size=0)
+            }
+            m_sample_pos[i] += n;
+
+        } else {
+            // Downsample, same-rate, or non-streamable: pass all samples through.
+            m_adj_in_sizes[i] = n;
+            for (size_t c = 0; c < num_ch; ++c)
+                m_adj_in_ch_ptrs[i][c] = input_data[i][c];
+        }
+        // m_adj_in_tensor_ptrs[i] already points at m_adj_in_ch_ptrs[i].data()
+    }
+
+    // --- Build adjusted output arrays ---
+    for (size_t i = 0; i < n_out; ++i) {
+        size_t n      = num_output_samples[i];
+        size_t num_ch = outSigCh[i];
+
+        if (i < n_in && is_downsample(i)) {
+            // Pop exactly output_sizes[i] samples into the temp buffer;
+            // we'll fill the caller's buffer with the held value afterwards.
+            m_adj_out_sizes[i] = output_sizes[i];
+            for (size_t c = 0; c < num_ch; ++c)
+                m_adj_out_ch_ptrs[i][c] = m_ds_out_buf[i].data() + c;
+        } else {
+            // Upsample or same-rate: pop directly into caller's buffer.
+            m_adj_out_sizes[i] = n;
+            for (size_t c = 0; c < num_ch; ++c)
+                m_adj_out_ch_ptrs[i][c] = output_data[i][c];
+        }
+        // m_adj_out_tensor_ptrs[i] already points at m_adj_out_ch_ptrs[i].data()
+    }
+
+    auto* adj_input  = reinterpret_cast<const float* const* const*>(m_adj_in_tensor_ptrs.data());
+    auto* adj_output = reinterpret_cast<float* const* const*>(m_adj_out_tensor_ptrs.data());
+
+    // --- Push / pop ---
+    // State-passing: pop first so post_process(N-1) writes state before push.
+    if (!m_state_pairs.empty()) {
+        m_inference_handler.pop_data(adj_output, m_adj_out_sizes.data());
+        m_inference_handler.push_data(adj_input,  m_adj_in_sizes.data());
+    } else {
+        m_inference_handler.push_data(adj_input,  m_adj_in_sizes.data());
+        m_inference_handler.pop_data(adj_output,  m_adj_out_sizes.data());
+    }
+
+    // --- Post-process downsample: sample-and-hold into caller's buffer ---
+    for (size_t i = 0; i < n_out; ++i) {
+        if (i < n_in && is_downsample(i)) {
+            size_t n      = num_output_samples[i];
+            size_t num_ch = outSigCh[i];
+            for (size_t c = 0; c < num_ch; ++c) {
+                // m_adj_out_sizes[i] is set to 0 by process_output on failure.
+                if (m_adj_out_sizes[i] > 0)
+                    m_hold_output[i][c] = m_ds_out_buf[i][c];
+                for (size_t s = 0; s < n; ++s)
+                    output_data[i][c][s] = m_hold_output[i][c];
+            }
+        }
+    }
+
+    return m_adj_out_sizes.data();
+}
+
+bool AniraProcessor::is_upsample(size_t i) const {
+    return i < input_sizes.size() && i < output_sizes.size()
+        && input_sizes[i] > 0 && output_sizes[i] > 0
+        && input_sizes[i] < output_sizes[i];
+}
+
+bool AniraProcessor::is_downsample(size_t i) const {
+    return i < input_sizes.size() && i < output_sizes.size()
+        && input_sizes[i] > 0 && output_sizes[i] > 0
+        && input_sizes[i] > output_sizes[i];
 }
 
 void AniraProcessor::set_input(const float& input, size_t i, size_t j) {
