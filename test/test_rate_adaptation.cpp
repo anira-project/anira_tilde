@@ -190,9 +190,10 @@ TEST(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
 
     // Push exactly one inference boundary of 2.0.
     run_with(two_buf);   // callback 1/2 — 16 samples accumulated
-    run_with(two_buf);   // callback 2/2 — 32 total → two-inference fires (mean=2.0)
+    run_with(two_buf);   // callback 2/2 — 32 total → two-inference fires (async)
+    run_with(two_buf);   // callback 3 — 50ms sleep has elapsed, result is in ring, pop it
 
-    // Last out_buf should contain the 2.0 inference result (sample-and-hold).
+    // out_buf should contain the 2.0 inference result (sample-and-hold).
     for (size_t i = 0; i < kRABuffer; ++i)
         EXPECT_FLOAT_EQ(out_buf[i], 2.0f) << "sample " << i;
 }
