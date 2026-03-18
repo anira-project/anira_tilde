@@ -3,6 +3,13 @@
 #include <filesystem>
 #include <stdexcept>
 
+#ifdef USE_LIBTORCH
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall"
+#include <torch/script.h>
+#pragma GCC diagnostic pop
+#endif
+
 static anira::ContextConfig load_context_config(anira::JsonConfigLoader& loader) {
     auto ptr = loader.get_context_config();
     if (!ptr) throw std::runtime_error("Failed to load context config (JSON may be malformed)");
@@ -23,6 +30,27 @@ static anira::InferenceConfig load_inference_config(anira::JsonConfigLoader& loa
             }
         }
     }
+
+#ifdef USE_LIBTORCH
+    // Validate any model_function names before threads start – get_method throws
+    // a fatal LibTorch assertion if the name doesn't exist in the model.
+    for (auto& md : config.m_model_data) {
+        if (md.m_backend == anira::InferenceBackend::LIBTORCH && !md.m_model_function.empty()) {
+            const std::string model_path(static_cast<char*>(md.m_data), md.m_size);
+            try {
+                auto module = torch::jit::load(model_path);
+                if (!module.find_method(md.m_model_function)) {
+                    throw std::runtime_error(
+                        "model '" + model_path + "' has no method '" + md.m_model_function +
+                        "' – check 'model_function' in your JSON config");
+                }
+            } catch (const c10::Error& e) {
+                throw std::runtime_error(
+                    "failed to load model '" + model_path + "' for validation: " + e.what());
+            }
+        }
+    }
+#endif
 
     // State passing requires strictly sequential inference: if two workers race,
     // pre_process(N+1) may read stale state before post_process(N) has written it.
