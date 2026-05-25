@@ -134,6 +134,10 @@ TEST(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
 // Constant input 2.0 should produce 2.0 across the entire output buffer
 // once the pipeline is warm.  Requires sample-and-hold (design spec).
 TEST(RateAdaptation, DownsampleHoldsConstantValue) {
+#ifdef ANIRA_TILDE_WITH_ASAN
+    GTEST_SKIP() << "Skipped under AddressSanitizer: instrumentation slows "
+                 << "inference past max_inference_time, anira drops output.";
+#endif
     AniraProcessor proc(DOWNSAMPLE_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 

@@ -56,3 +56,44 @@ jobs:
         with:
           name: anira_tilde-${{ matrix.name }}
           path: externals/
+
+  sanitizers:
+    name: ${{ matrix.preset }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { preset: desktop-debug-asan,  needs_llvm20: false }
+          - { preset: desktop-debug-tsan,  needs_llvm20: false }
+          - { preset: desktop-debug-rtsan, needs_llvm20: true }
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: unshallow submodules for git describe
+        shell: bash
+        run: git submodule foreach --recursive 'git fetch --unshallow --tags origin 2>/dev/null || git fetch --tags origin'
+
+      - name: setup build tools
+        uses: tanh-lab/ci-actions/setup-cpp-build-tools@main
+
+      - name: install llvm@20 for RTSan
+        if: matrix.needs_llvm20
+        shell: bash
+        run: |
+          brew install llvm@20
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+
+      - name: configure and build
+        uses: tanh-lab/ci-actions/cmake-build@main
+        with:
+          PRESET: ${{ matrix.preset }}
+
+      - name: run tests
+        uses: tanh-lab/ci-actions/cmake-test@main
+        with:
+          PRESET: ${{ matrix.preset }}

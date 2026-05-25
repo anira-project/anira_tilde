@@ -13,6 +13,16 @@
             }
         },
         {
+            "name": "desktop-debug",
+            "displayName": "Desktop Debug",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/desktop/Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ANIRA_TILDE_WITH_TESTS": "ON"
+            }
+        },
+        {
             "name": "macos-x64-release",
             "displayName": "macOS x86_64 Release",
             "inherits": "desktop-release",
@@ -29,17 +39,58 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "ANIRA_TILDE_WITH_TESTS": "ON"
             }
+        },
+        {
+            "name": "desktop-debug-asan",
+            "displayName": "Desktop Debug + ASan/UBSan",
+            "inherits": "desktop-debug",
+            "binaryDir": "${sourceDir}/build/desktop/Debug-asan",
+            "cacheVariables": {
+                "ANIRA_TILDE_WITH_ASAN": "ON",
+                "ANIRA_TILDE_WITH_UBSAN": "ON"
+            }
+        },
+        {
+            "name": "desktop-debug-tsan",
+            "displayName": "Desktop Debug + TSan",
+            "inherits": "desktop-debug",
+            "binaryDir": "${sourceDir}/build/desktop/Debug-tsan",
+            "cacheVariables": {
+                "ANIRA_TILDE_WITH_TSAN": "ON"
+            }
+        },
+        {
+            "name": "desktop-debug-rtsan",
+            "displayName": "Desktop Debug + RTSan",
+            "inherits": "desktop-debug",
+            "binaryDir": "${sourceDir}/build/desktop/Debug-rtsan",
+            "cacheVariables": {
+                "ANIRA_TILDE_WITH_RTSAN": "ON",
+                "ANIRA_WITH_RTSAN": "ON",
+                "ANIRA_WITH_LOGGING": "OFF",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++"
+            }
         }
     ],
     "buildPresets": [
         { "name": "desktop-release",    "configurePreset": "desktop-release" },
+        { "name": "desktop-debug",      "configurePreset": "desktop-debug" },
         { "name": "macos-x64-release",  "configurePreset": "macos-x64-release" },
-        { "name": "windows-release",    "configurePreset": "windows-release", "configuration": "Release" }
+        { "name": "windows-release",    "configurePreset": "windows-release", "configuration": "Release" },
+        { "name": "desktop-debug-asan", "configurePreset": "desktop-debug-asan" },
+        { "name": "desktop-debug-tsan", "configurePreset": "desktop-debug-tsan" },
+        { "name": "desktop-debug-rtsan","configurePreset": "desktop-debug-rtsan" }
     ],
     "testPresets": [
         {
             "name": "desktop-release",
             "configurePreset": "desktop-release",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "desktop-debug",
+            "configurePreset": "desktop-debug",
             "output": { "outputOnFailure": true }
         },
         {
@@ -51,6 +102,21 @@
             "name": "windows-release",
             "configurePreset": "windows-release",
             "configuration": "Release",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "desktop-debug-asan",
+            "configurePreset": "desktop-debug-asan",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "desktop-debug-tsan",
+            "configurePreset": "desktop-debug-tsan",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "desktop-debug-rtsan",
+            "configurePreset": "desktop-debug-rtsan",
             "output": { "outputOnFailure": true }
         }
     ]

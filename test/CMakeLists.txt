@@ -1,13 +1,8 @@
 cmake_minimum_required(VERSION 3.19)
 project(anira_tilde_tests)
 
-include(FetchContent)
-FetchContent_Declare(googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_SHALLOW TRUE
-    GIT_TAG v1.14.0)
-FetchContent_MakeAvailable(googletest)
-
+include(setup-googletest)
+include(copy-windows-runtime-dlls)
 
 add_executable(anira_tilde_tests
     test_state_pair_parser.cpp
@@ -39,9 +34,8 @@ target_link_libraries(anira_tilde_tests
     anira::anira
 )
 
-target_compile_features(anira_tilde_tests PRIVATE cxx_std_20)
+include(cxx-standard)
 
-include(GoogleTest)
 # PRE_TEST defers discovery to ctest run time, which is required when
 # cross-compiling (e.g. building macOS x86_64 on an arm64 runner) since
 # the binary can't necessarily be executed at configure time.
@@ -50,19 +44,4 @@ gtest_discover_tests(anira_tilde_tests
     DISCOVERY_TIMEOUT 90
 )
 
-# On Windows, copy anira's runtime DLLs (anira + libtorch/onnx/tflite backends)
-# next to the test executable so tests can locate them at runtime.
-if(WIN32)
-    add_custom_command(TARGET anira_tilde_tests PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${ANIRA_SHARED_LIBS_WIN}
-            $<TARGET_FILE_DIR:anira_tilde_tests>
-        COMMAND_EXPAND_LISTS
-    )
-    add_custom_command(TARGET anira_tilde_tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:anira_tilde_tests>
-            $<TARGET_FILE_DIR:anira_tilde_tests>
-        COMMAND_EXPAND_LISTS
-    )
-endif()
+anira_tilde_copy_windows_runtime_dlls(anira_tilde_tests)
