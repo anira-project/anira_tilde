@@ -1,4 +1,4 @@
-![anira Logo](/docs/img/anira-tilde-logo.png)
+![anira Logo](/.github/assets/anira-tilde-logo.png)
 
 ---
 

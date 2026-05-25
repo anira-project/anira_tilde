@@ -51,11 +51,20 @@ jobs:
         with:
           PRESET: ${{ matrix.preset }}
 
-      - name: upload external
+      - name: stage Max package
+        shell: bash
+        run: |
+          STAGE="package/anira_tilde"
+          mkdir -p "$STAGE"
+          cp -R externals help examples docs "$STAGE/"
+          cp package-info.json README.md LICENSE "$STAGE/"
+          cp .github/assets/icon.png "$STAGE/icon.png"
+
+      - name: upload package
         uses: actions/upload-artifact@v4
         with:
           name: anira_tilde-${{ matrix.name }}
-          path: externals/
+          path: package/
 
   sanitizers:
     name: ${{ matrix.preset }}
