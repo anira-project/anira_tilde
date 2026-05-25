@@ -1,0 +1,31 @@
+{
+  "inference_config": {
+    "model_data": [
+      {
+        "model_path": "path/to/sashimi_tiny_decode.ts",
+        "inference_backend": "LIBTORCH"
+      }
+    ],
+    "tensor_shape": [
+      {
+        "input_shape": [[1, 64, 1], [1, 64]],
+        "output_shape": [[1, 1, 2048], [1, 64]]
+      }
+    ],
+    "processing_spec": {
+      "preprocess_input_channels": [64, 1],
+      "postprocess_output_channels": [1, 1],
+      "preprocess_input_size": [1, 0],
+      "postprocess_output_size": [2048, 0]
+    },
+    "max_inference_time": 100.0
+  },
+  "state_config": {
+    "state_pairs": [
+      {
+        "output_tensor": 1,
+        "input_tensor": 1
+      }
+    ]
+  }
+}

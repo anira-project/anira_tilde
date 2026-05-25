@@ -33,9 +33,7 @@ def main() -> None:
 
     traced = torch.jit.trace(model, (audio_in, state_in))
 
-    out_dir = os.path.join(os.path.dirname(__file__), "models")
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "state_accumulator.pt")
+    out_path = os.path.join(os.path.dirname(__file__), "state_accumulator.pt")
     traced.save(out_path)
     print(f"Saved {out_path}")
 
