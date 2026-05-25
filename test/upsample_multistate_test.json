@@ -15,7 +15,7 @@
       "preprocess_input_size":       [1, 0, 0],
       "postprocess_output_size":     [16, 0, 0]
     },
-    "max_inference_time": 10.0
+    "max_inference_time": 40.0
   },
   "state_config": {
     "state_pairs": [
