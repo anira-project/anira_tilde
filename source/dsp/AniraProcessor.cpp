@@ -1,5 +1,6 @@
 #include "AniraProcessor.h"
 
+#include <filesystem>
 #include <stdexcept>
 
 static anira::ContextConfig load_context_config(anira::JsonConfigLoader& loader) {
@@ -12,6 +13,17 @@ static anira::InferenceConfig load_inference_config(anira::JsonConfigLoader& loa
     auto ptr = loader.get_inference_config();
     if (!ptr) throw std::runtime_error("Failed to load inference config from: " + path + " (JSON may be malformed or missing 'inference_config' key)");
     auto config = std::move(*ptr);
+
+    auto config_dir = std::filesystem::path(path).parent_path();
+    for (auto& md : config.m_model_data) {
+        if (!md.m_is_binary) {
+            auto model_path = std::filesystem::path(std::string(static_cast<char*>(md.m_data), md.m_size));
+            if (model_path.is_relative()) {
+                config.set_model_path((config_dir / model_path).string(), md.m_backend);
+            }
+        }
+    }
+
     // State passing requires strictly sequential inference: if two workers race,
     // pre_process(N+1) may read stale state before post_process(N) has written it.
     if (!parse_state_pairs(path).empty()) {

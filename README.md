@@ -12,7 +12,7 @@ The configuration file has a top-level `inference_config` object with the follow
 
 | Field (inside `inference_config`) | Required | Description |
 |------------------------------------|----------|-------------|
-| `model_data` | yes | Array of objects, each with `model_path` (path to `.onnx`, `.ts`, `.tflite`, or `.pt`) and `inference_backend` (`LIBTORCH`, `ONNX`, or `TFLITE`). |
+| `model_data` | yes | Array of objects, each with `model_path` (path to `.onnx`, `.ts`, `.tflite`, or `.pt`) and `inference_backend` (`LIBTORCH`, `ONNX`, or `TFLITE`). Relative paths are evaluated with respect to the JSON config file's location. |
 | `tensor_shape` | yes | Array of objects, each with `input_shape` and `output_shape` — arrays of per-tensor shapes (each shape is itself an array). |
 | `max_inference_time` | yes | Maximum inference time in milliseconds. If unsure, start high (higher latency) and reduce gradually. See [anira's benchmarking](https://github.com/anira-project/anira/blob/main/docs/benchmark-usage.md). |
 | `processing_spec` | no | Object with `preprocess_input_channels`, `preprocess_input_size`, `postprocess_output_channels`, and `postprocess_output_size` — one entry per tensor. Values > 0 in `*_size` define streamable signal inlets/outlets; 0 defines non-streamable message inlets/outlets. Auto-computed from tensor shapes when omitted (all tensors treated as single-channel signals). |
@@ -39,6 +39,13 @@ Example configuration structure:
 
 `processing_spec` is optional for simple models — the library auto-computes it from the tensor shapes, treating all tensors as single-channel signal tensors. It is required when you have non-streamable (message) tensors mixed with signal tensors.
 *(Note: For comprehensive documentation on the anira library and configuration file structure, please visit: [https://anira-project.github.io/anira/](https://anira-project.github.io/anira/))*
+
+## Rate-adapting models (latent ↔ audio)
+
+Models where `preprocess_input_size ≠ postprocess_output_size` (e.g. a latent decoder that takes 1 latent frame and produces 2048 audio samples) are handled automatically — no extra configuration required. The ratio `N = max(output_size, input_size) / min(output_size, input_size)` must be a positive integer; non-integer ratios are not supported.
+
+- **input\_size < output\_size** (latent → audio): inference fires once per group of `input_size` samples; the larger audio output is drained across subsequent callbacks.
+- **input\_size > output\_size** (audio → latent): anira accumulates `input_size` samples before firing inference; the output is held until the next inference.
 
 ## State-passing models
 
