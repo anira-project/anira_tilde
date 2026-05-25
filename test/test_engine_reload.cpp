@@ -33,16 +33,16 @@ TEST(EngineReload, LoadingTwiceReplacesSession) {
     Engine engine;
     ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
     ASSERT_TRUE(engine.config_loaded());
-    const size_t in_ch_1  = engine.sig_input_channels().size();
-    const size_t out_ch_1 = engine.sig_output_channels().size();
+    const size_t in_ch_1  = engine.layout().sig_input_channels.size();
+    const size_t out_ch_1 = engine.layout().sig_output_channels.size();
 
     // Reload the same config. Should succeed; previous Session is destroyed.
     ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
     ASSERT_TRUE(engine.config_loaded());
 
     // Layout unchanged after reload of identical config.
-    EXPECT_EQ(engine.sig_input_channels().size(),  in_ch_1);
-    EXPECT_EQ(engine.sig_output_channels().size(), out_ch_1);
+    EXPECT_EQ(engine.layout().sig_input_channels.size(),  in_ch_1);
+    EXPECT_EQ(engine.layout().sig_output_channels.size(), out_ch_1);
 }
 
 TEST(EngineReload, ReadyResetsAfterReload) {
@@ -64,8 +64,8 @@ TEST(EngineReload, ProcessBeforeReprepareIsSafe) {
     ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
     // Engine is parked. process() must not crash or touch stale buffers.
     EXPECT_NO_THROW(run_one_block(engine,
-                                  engine.sig_input_channels().size(),
-                                  engine.sig_output_channels().size(),
+                                  engine.layout().sig_input_channels.size(),
+                                  engine.layout().sig_output_channels.size(),
                                   64));
 }
 
@@ -78,8 +78,8 @@ TEST(EngineReload, ReprepareRevivesEngine) {
     engine.prepare(64, 44100.0);
     EXPECT_TRUE(engine.ready());
     EXPECT_NO_THROW(run_one_block(engine,
-                                  engine.sig_input_channels().size(),
-                                  engine.sig_output_channels().size(),
+                                  engine.layout().sig_input_channels.size(),
+                                  engine.layout().sig_output_channels.size(),
                                   64));
 }
 

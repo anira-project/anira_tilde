@@ -100,20 +100,20 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
     c74::max::post(
         "anira~: Signal input tensors: %zu, Signal output tensors: %zu, "
         "Message input tensors: %zu, Message output tensors: %zu",
-        m_engine.sig_input_channels().size(),
-        m_engine.sig_output_channels().size(),
-        m_engine.msg_input_channels().size(),
-        m_engine.msg_output_channels().size()
+        m_engine.layout().sig_input_channels.size(),
+        m_engine.layout().sig_output_channels.size(),
+        m_engine.layout().msg_input_channels.size(),
+        m_engine.layout().msg_output_channels.size()
     );
-    if (m_engine.state_pair_count() > 0) {
+    if (m_engine.layout().state_pairs.size() > 0) {
         c74::max::post("anira~: State-passing mode active — %zu state pair(s) fed back internally.",
-                       m_engine.state_pair_count());
+                       m_engine.layout().state_pairs.size());
     }
 
-    init_external(m_engine.sig_input_channels(),
-                  m_engine.sig_output_channels(),
-                  m_engine.msg_input_channels(),
-                  m_engine.msg_output_channels());
+    init_external(m_engine.layout().sig_input_channels,
+                  m_engine.layout().sig_output_channels,
+                  m_engine.layout().msg_input_channels,
+                  m_engine.layout().msg_output_channels);
 }
 
 void AniraTilde::operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) {
@@ -189,69 +189,64 @@ void AniraTilde::init_external(const std::vector<size_t>& sig_inputs,
     m_sig_outlets.clear();
     m_msg_outlets.clear();
 
-    size_t last_audio_input_tensor  = 0;
-    size_t last_audio_output_tensor = 0;
+    const auto label = [](const char* kind, size_t tensor, size_t channel) {
+        return std::string("(") + kind + ") Tensor " + std::to_string(tensor + 1)
+             + ", Channel " + std::to_string(channel + 1);
+    };
 
-    for (size_t i = 0; i < sig_inputs.size(); ++i) {
-        last_audio_input_tensor++;
-        for (size_t j = 0; j < sig_inputs[i]; ++j) {
+    // Signal inlets: one per channel of each signal input tensor.
+    for (size_t t = 0; t < sig_inputs.size(); ++t) {
+        for (size_t c = 0; c < sig_inputs[t]; ++c) {
             Input in;
-            in.inlet = std::make_unique<c74::min::inlet<>>(
-                this,
-                "(signal) Tensor " + std::to_string(i + 1) + ", Channel " + std::to_string(j + 1),
-                "signal");
+            in.inlet        = std::make_unique<c74::min::inlet<>>(this, label("signal", t, c), "signal");
             in.type         = MaxType::SIGNAL;
             in.num_channels = 1;
-            in.tensor_index = i;
+            in.tensor_index = t;
             m_sig_inlets.push_back(std::move(in));
         }
     }
 
-    for (size_t i = 0; i < sig_outputs.size(); ++i) {
-        last_audio_output_tensor++;
-        for (size_t j = 0; j < sig_outputs[i]; ++j) {
+    // Signal outlets: same shape.
+    for (size_t t = 0; t < sig_outputs.size(); ++t) {
+        for (size_t c = 0; c < sig_outputs[t]; ++c) {
             Output out;
-            out.outlet = std::make_unique<c74::min::outlet<>>(
-                this,
-                "(signal) Tensor " + std::to_string(i + 1) + ", Channel " + std::to_string(j + 1),
-                "signal");
+            out.outlet       = std::make_unique<c74::min::outlet<>>(this, label("signal", t, c), "signal");
             out.type         = MaxType::SIGNAL;
             out.num_channels = 1;
-            out.tensor_index = i;
+            out.tensor_index = t;
             m_sig_outlets.push_back(std::move(out));
         }
     }
 
-    for (size_t tensor = 0; tensor < msg_inputs.size(); ++tensor) {
-        for (size_t channel = 0; channel < msg_inputs[tensor].size(); ++channel) {
+    // Message inlets: tensor_index continues past the signal tensors.
+    const size_t msg_in_base = sig_inputs.size();
+    for (size_t t = 0; t < msg_inputs.size(); ++t) {
+        for (size_t c = 0; c < msg_inputs[t].size(); ++c) {
             Input in;
-            in.inlet = std::make_unique<c74::min::inlet<>>(
-                this,
-                "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1),
-                "");
+            in.inlet        = std::make_unique<c74::min::inlet<>>(this, label("message", t, c), "");
             in.type         = MaxType::MESSAGE;
-            in.num_channels = msg_inputs[tensor][channel];
-            in.tensor_index = tensor + last_audio_input_tensor;
+            in.num_channels = msg_inputs[t][c];
+            in.tensor_index = msg_in_base + t;
             m_msg_inlets.push_back(std::move(in));
         }
     }
 
-    for (size_t tensor = 0; tensor < msg_outputs.size(); ++tensor) {
-        for (size_t channel = 0; channel < msg_outputs[tensor].size(); ++channel) {
+    // Message outlets: same scheme.
+    const size_t msg_out_base = sig_outputs.size();
+    for (size_t t = 0; t < msg_outputs.size(); ++t) {
+        for (size_t c = 0; c < msg_outputs[t].size(); ++c) {
             Output out;
-            out.outlet = std::make_unique<c74::min::outlet<>>(
-                this,
-                "(message) Tensor " + std::to_string(tensor + 1) + ", Channel " + std::to_string(channel + 1),
-                "");
+            out.outlet       = std::make_unique<c74::min::outlet<>>(this, label("message", t, c), "");
             out.type         = MaxType::MESSAGE;
-            out.num_channels = msg_outputs[tensor][channel];
-            out.tensor_index = tensor + last_audio_output_tensor;
+            out.num_channels = msg_outputs[t][c];
+            out.tensor_index = msg_out_base + t;
             m_msg_outlets.push_back(std::move(out));
         }
     }
 
+    // Dedicated latency outlet always at the end of the message-outlet vector.
     Output latency_out;
-    latency_out.outlet = std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int");
+    latency_out.outlet       = std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int");
     latency_out.type         = MaxType::LATENCY;
     latency_out.num_channels = 1;
     m_msg_outlets.push_back(std::move(latency_out));

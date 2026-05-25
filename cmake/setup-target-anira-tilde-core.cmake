@@ -3,6 +3,7 @@
 add_library(anira_tilde_core STATIC
     src/Engine.cpp
     src/inference/Session.cpp
+    src/inference/TensorLayout.cpp
     src/mixing/Mixer.cpp
     src/rate_adaptation/RateAdaptor.cpp
     src/state_passing/StatePairParser.cpp

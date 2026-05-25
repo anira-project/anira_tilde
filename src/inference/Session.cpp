@@ -1,6 +1,8 @@
 #include "anira_tilde/inference/Session.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 
 
@@ -41,104 +43,39 @@ Session::Session(std::string json_config_path) :
     m_inference_config(load_inference_config(m_config_loader, json_config_path)),
     m_state_pairs(parse_state_pairs(json_config_path)),
     m_pp_processor(m_inference_config, m_state_pairs),
-    m_inference_handler(m_pp_processor, m_inference_config)
-{
-    std::vector<size_t> inShapes;
-    std::vector<size_t> outShapes;
-    auto processing_spec = m_inference_config.m_processing_spec;
+    m_inference_handler(m_pp_processor, m_inference_config),
+    m_layout(TensorLayout::from(m_inference_config, m_state_pairs))
+{}
 
-    for (int i = 0; i < m_inference_config.m_tensor_shape[0].m_tensor_input_shape.size(); ++i) {
-        size_t size = 1;
-        for (int j = 0; j < m_inference_config.m_tensor_shape[0].m_tensor_input_shape[i].size(); ++j) {
-            size *= static_cast<size_t>(m_inference_config.m_tensor_shape[0].m_tensor_input_shape[i][j]);
-        }
-        inShapes.emplace_back(size);
+namespace {
+
+/// For the first upsample tensor (input_size < output_size), compute the
+/// extra "decoder" latency anira needs to allocate. Returns std::nullopt
+/// when no tensor needs it.
+struct DecoderLatency { size_t tensor_index; unsigned int samples; };
+
+std::optional<DecoderLatency> compute_decoder_latency(const TensorLayout& layout,
+                                                      size_t buffer_size) {
+    for (size_t i = 0; i < layout.output_block_sizes.size(); ++i) {
+        if (i >= layout.input_block_sizes.size()) break;
+        if (layout.input_block_sizes[i] >= layout.output_block_sizes[i]) continue;
+        const size_t out_sz        = layout.output_block_sizes[i];
+        const size_t safety_margin = std::max(buffer_size, out_sz);
+        return DecoderLatency{ i, static_cast<unsigned int>(out_sz + safety_margin) };
     }
-
-    for (int i = 0; i < m_inference_config.m_tensor_shape[0].m_tensor_output_shape.size(); ++i) {
-        size_t size = 1;
-        for (int j = 0; j < m_inference_config.m_tensor_shape[0].m_tensor_output_shape[i].size(); ++j) {
-            size *= static_cast<size_t>(m_inference_config.m_tensor_shape[0].m_tensor_output_shape[i][j]);
-        }
-        outShapes.emplace_back(size);
-    }
-
-    auto inSz  = processing_spec.m_preprocess_input_size;
-    auto inCh  = processing_spec.m_preprocess_input_channels;
-    auto outSz = processing_spec.m_postprocess_output_size;
-    auto outCh = processing_spec.m_postprocess_output_channels;
-
-    m_layout.input_block_sizes = inSz;
-    m_layout.output_block_sizes = outSz;
-
-    for (int i = 0; i < (int)inShapes.size(); ++i) {
-        if (inSz[i] > 0) {
-            m_layout.sig_input_channels.push_back(inCh[i]);
-        } else if (is_state_input(static_cast<size_t>(i))) {
-            // State input tensor: managed internally, not exposed as a Max inlet.
-        } else {
-            size_t channels = inCh[i];
-            size_t total_elems = inShapes[i];
-            std::vector<size_t> msg_ch;
-            if (channels == 0) channels = 1;
-            if (total_elems % channels != 0) {
-                throw std::runtime_error("Inconsistent message channel configuration");
-            }
-            size_t elems_per_ch = total_elems / channels;
-            for (size_t c = 0; c < channels; ++c) {
-                msg_ch.push_back(elems_per_ch);
-            }
-            m_layout.msg_input_channels.push_back(msg_ch);
-        }
-    }
-    for (int i = 0; i < (int)outShapes.size(); ++i) {
-        if (outSz[i] > 0) {
-            m_layout.sig_output_channels.push_back(outCh[i]);
-        } else if (is_state_output(static_cast<size_t>(i))) {
-            // State output tensor: fed back internally, not exposed as a Max outlet.
-        } else {
-            size_t channels = outCh[i];
-            size_t total_elems = outShapes[i];
-            std::vector<size_t> msg_ch;
-            if (channels == 0) channels = 1;
-            if (total_elems % channels != 0) {
-                throw std::runtime_error("Inconsistent message channel configuration");
-            }
-            size_t elems_per_ch = total_elems / channels;
-            for (size_t c = 0; c < channels; ++c) {
-                msg_ch.push_back(elems_per_ch);
-            }
-            m_layout.msg_output_channels.push_back(msg_ch);
-        }
-    }
-
-    m_layout.state_pairs = m_state_pairs;
-    m_layout.build_channel_maps();
+    return std::nullopt;
 }
 
-void Session::prepare(size_t buffer_size, double sample_rate)
-{
+} // namespace
+
+void Session::prepare(size_t buffer_size, double sample_rate) {
     anira::HostConfig host_config {
         static_cast<float>(buffer_size),
         static_cast<float>(sample_rate),
     };
 
-    size_t decoder_index = 0;
-    unsigned int decoder_latency = 0;
-    bool use_custom_latency = false;
-
-    for (size_t i = 0; i < m_layout.output_block_sizes.size(); ++i) {
-        if (i < m_layout.input_block_sizes.size() && m_layout.input_block_sizes[i] < m_layout.output_block_sizes[i]) {
-            decoder_index = i;
-            size_t safety_margin = (buffer_size > m_layout.output_block_sizes[i]) ? buffer_size : m_layout.output_block_sizes[i];
-            decoder_latency = static_cast<unsigned int>(m_layout.output_block_sizes[i] + safety_margin);
-            use_custom_latency = true;
-            break;
-        }
-    }
-
-    if (use_custom_latency) {
-        m_inference_handler.prepare(host_config, decoder_latency, decoder_index);
+    if (const auto dl = compute_decoder_latency(m_layout, buffer_size)) {
+        m_inference_handler.prepare(host_config, dl->samples, dl->tensor_index);
     } else {
         m_inference_handler.prepare(host_config);
     }
@@ -157,23 +94,18 @@ size_t Session::get_latency_samples()
 void Session::process(const float* const* const* input_data,  size_t* num_input_samples,
                       float* const* const*       output_data, size_t* num_output_samples)
 {
-    m_rate_adaptor.pre_dispatch(m_layout,
-                                input_data,  num_input_samples,
-                                output_data, num_output_samples);
-
-    auto* views_in    = m_rate_adaptor.input_views();
-    auto* views_out   = m_rate_adaptor.output_views();
-    auto* views_in_n  = m_rate_adaptor.input_view_sample_counts();
-    auto* views_out_n = m_rate_adaptor.output_view_sample_counts();
+    const auto v = m_rate_adaptor.pre_dispatch(m_layout,
+                                               input_data,  num_input_samples,
+                                               output_data, num_output_samples);
 
     // State-passing requires pop-before-push so post_process(N-1) writes
     // fresh state before pre_process(N) reads it.
     if (!m_state_pairs.empty()) {
-        m_inference_handler.pop_data (views_out, views_out_n);
-        m_inference_handler.push_data(views_in,  views_in_n);
+        m_inference_handler.pop_data (v.out_tensors, v.out_sample_counts);
+        m_inference_handler.push_data(v.in_tensors,  v.in_sample_counts);
     } else {
-        m_inference_handler.push_data(views_in,  views_in_n);
-        m_inference_handler.pop_data (views_out, views_out_n);
+        m_inference_handler.push_data(v.in_tensors,  v.in_sample_counts);
+        m_inference_handler.pop_data (v.out_tensors, v.out_sample_counts);
     }
 
     m_rate_adaptor.post_dispatch(m_layout, output_data, num_output_samples);
@@ -185,20 +117,6 @@ void Session::set_input(float input, size_t tensor_index, size_t channel) {
 
 float Session::get_output(size_t tensor_index, size_t channel) {
     return m_pp_processor.get_output(tensor_index, channel);
-}
-
-bool Session::is_state_input(size_t tensor_index) const {
-    for (const auto& pair : m_state_pairs) {
-        if (pair.input_tensor == tensor_index) return true;
-    }
-    return false;
-}
-
-bool Session::is_state_output(size_t tensor_index) const {
-    for (const auto& pair : m_state_pairs) {
-        if (pair.output_tensor == tensor_index) return true;
-    }
-    return false;
 }
 
 } // namespace anira_tilde

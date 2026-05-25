@@ -31,55 +31,63 @@ namespace anira_tilde {
  *                  input sample (it accumulates), and ask it to pop one
  *                  output sample into a 1-sample scratch buffer; we then
  *                  sample-and-hold that value across the host output.
- *
- * The "view" vectors below present the host's pointers to anira in the shape
- * anira's push_data/pop_data want (per-tensor channel-pointer arrays). Their
- * contents are rewritten per process() call but their storage is allocated
- * once in prepare() so the audio thread never allocates.
  */
 class ANIRA_TILDE_API RateAdaptor {
 public:
+    enum class Kind : uint8_t { Equal, Upsample, Downsample };
+
+    /// Bundle of pointer arrays in the shape anira's push_data / pop_data
+    /// want. Returned by pre_dispatch() and consumed by the caller's
+    /// InferenceHandler invocation.
+    struct AniraView {
+        const float* const* const* in_tensors;
+        size_t*                    in_sample_counts;
+        float* const* const*       out_tensors;
+        size_t*                    out_sample_counts;
+    };
+
     void prepare(const TensorLayout& layout, size_t host_buffer_size);
 
     bool is_active() const noexcept { return m_active; }
 
-    /// Build the views anira sees this block. Call before dispatching to
-    /// anira; pre_dispatch() reads the host pointers and rewrites the
-    /// internal view arrays accessible via input_views() / output_views().
-    void pre_dispatch(const TensorLayout& layout,
-                      const float* const* const* input_data,  const size_t* num_input_samples,
-                      float* const* const*       output_data, const size_t* num_output_samples);
+    /// Compute the views anira sees this block.
+    AniraView pre_dispatch(const TensorLayout& layout,
+                           const float* const* const* input_data,  const size_t* num_input_samples,
+                           float* const* const*       output_data, const size_t* num_output_samples);
 
     /// Apply post-dispatch fixups (downsample sample-and-hold).
-    /// Call after anira has filled the output views.
     void post_dispatch(const TensorLayout& layout,
                        float* const* const* output_data,
                        const size_t* num_output_samples);
 
-    // Views to feed anira's push_data / pop_data with.
-    const float* const* const* input_views()              const { return reinterpret_cast<const float* const* const*>(m_in_view_tensors.data()); }
-    float* const* const*       output_views()             const { return reinterpret_cast<float* const* const*>      (m_out_view_tensors.data()); }
-    size_t*                    input_view_sample_counts()  { return m_in_view_sample_counts.data(); }
-    size_t*                    output_view_sample_counts() { return m_out_view_sample_counts.data(); }
-
 private:
-    enum class Kind : uint8_t { Equal, Upsample, Downsample };
+    /// State for a single signal tensor pair. Only the slot matching `kind`
+    /// is actually used; the others stay default-constructed (zero cost).
+    struct PerTensor {
+        Kind                 kind         = Kind::Equal;
+        size_t               upsample_pos = 0;     // running input counter (Upsample)
+        anira::Buffer<float> downsample_hold;      // last seen output (Downsample)
+        anira::Buffer<float> downsample_pop;       // 1-sample scratch anira writes into (Downsample)
+    };
 
-    // Precomputed in prepare().
-    std::vector<Kind>                 m_kinds;                     // per signal tensor
-    bool                              m_active = false;
+    /// Returns the offset into this host block where the next inference
+    /// boundary falls, or std::nullopt if no boundary is crossed.
+    /// `pos` is the running input-sample counter for this tensor.
+    static bool next_inference_offset(size_t pos,
+                                      size_t output_block_size,
+                                      size_t host_samples,
+                                      size_t& out_offset) noexcept;
 
-    // Upsample state.
-    std::vector<size_t>               m_upsample_input_position;   // running counter per tensor
+    std::vector<PerTensor> m_tensors;    // one per max(n_sig_in, n_sig_out)
+    bool                   m_active = false;
 
-    // Downsample state.
-    std::vector<anira::Buffer<float>> m_downsample_held_samples;   // [tensor] (channels × 1)
-    std::vector<anira::Buffer<float>> m_downsample_pop_buffer;     // [tensor] (channels × 1)
-
-    // What we present to anira this block (rewritten per process() call).
-    std::vector<std::vector<const float*>> m_in_view_channels;     // [tensor][channel]
-    std::vector<const float**>             m_in_view_tensors;      // [tensor] = channels.data()
-    std::vector<size_t>                    m_in_view_sample_counts;// [tensor]
+    // anira-shaped view storage. Rewritten per pre_dispatch() call,
+    // allocated once in prepare(). Channels-of-tensor[t] live in
+    // m_in_view_channels[t]; m_in_view_tensors[t] points at that
+    // sub-vector's data().
+    std::vector<std::vector<const float*>> m_in_view_channels;
+    std::vector<const float**>             m_in_view_tensors;
+    std::vector<size_t>                    m_in_view_sample_counts;
     std::vector<std::vector<float*>>       m_out_view_channels;
     std::vector<float**>                   m_out_view_tensors;
     std::vector<size_t>                    m_out_view_sample_counts;

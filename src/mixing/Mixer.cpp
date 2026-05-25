@@ -29,23 +29,23 @@ void Mixer::process_channel_block(const float* dry,
                                   float*       out,
                                   size_t frames, size_t channel) {
     for (size_t s = 0; s < frames; ++s) {
-        push_dry_sample(dry[s], static_cast<int>(channel));
+        push_dry_sample(dry[s], channel);
         const float wet_sample = (wet_period > 0)
             ? wet[s % wet_period]
             : m_last_wet[channel];
-        out[s] = mix_wet_sample(wet_sample, static_cast<int>(channel));
+        out[s] = mix_wet_sample(wet_sample, channel);
     }
     if (wet_period > 0)
         m_last_wet[channel] = wet[wet_period - 1];
 }
 
-void Mixer::push_dry_sample(float dry_sample, int channel) {
+void Mixer::push_dry_sample(float dry_sample, size_t channel) {
     const size_t delay_size = m_delay_buffer.get_num_samples();
     m_delay_buffer.get_write_pointer(channel)[m_write_index[channel]] = dry_sample;
     m_write_index[channel] = (m_write_index[channel] + 1) % delay_size;
 }
 
-float Mixer::mix_wet_sample(float wet_sample, int channel) {
+float Mixer::mix_wet_sample(float wet_sample, size_t channel) {
     const size_t delay_size = m_delay_buffer.get_num_samples();
     const float delayed_dry = m_delay_buffer.get_read_pointer(channel)[m_read_index[channel]];
     m_read_index[channel] = (m_read_index[channel] + 1) % delay_size;

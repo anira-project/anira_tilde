@@ -27,9 +27,6 @@ public:
     const TensorLayout& layout() const { return m_layout; }
 
 private:
-    bool is_state_input (size_t tensor_index) const;
-    bool is_state_output(size_t tensor_index) const;
-
     // Declaration order matches construction order.
     anira::JsonConfigLoader      m_config_loader;
     anira::ContextConfig         m_anira_context;

@@ -37,11 +37,7 @@ public:
     bool config_loaded() const noexcept { return m_session != nullptr; }
 
     // --- Tensor layout (used by hosts to set up inlets/outlets) ----------
-    const std::vector<size_t>&              sig_input_channels()  const;
-    const std::vector<size_t>&              sig_output_channels() const;
-    const std::vector<std::vector<size_t>>& msg_input_channels()  const;
-    const std::vector<std::vector<size_t>>& msg_output_channels() const;
-    size_t state_pair_count() const;
+    const TensorLayout& layout() const;
 
     // --- Lifecycle -------------------------------------------------------
     void   prepare(size_t host_buffer_size, double host_sample_rate);

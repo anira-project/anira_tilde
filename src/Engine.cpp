@@ -24,24 +24,9 @@ bool Engine::load_config(const std::string& json_config_path, std::string* error
     return true;
 }
 
-const std::vector<size_t>& Engine::sig_input_channels() const {
-    return m_session->layout().sig_input_channels;
-}
-
-const std::vector<size_t>& Engine::sig_output_channels() const {
-    return m_session->layout().sig_output_channels;
-}
-
-const std::vector<std::vector<size_t>>& Engine::msg_input_channels() const {
-    return m_session->layout().msg_input_channels;
-}
-
-const std::vector<std::vector<size_t>>& Engine::msg_output_channels() const {
-    return m_session->layout().msg_output_channels;
-}
-
-size_t Engine::state_pair_count() const {
-    return m_session ? m_session->layout().state_pairs.size() : 0;
+const TensorLayout& Engine::layout() const {
+    static const TensorLayout empty;
+    return m_session ? m_session->layout() : empty;
 }
 
 size_t Engine::latency_samples() const {

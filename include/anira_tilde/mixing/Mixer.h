@@ -30,8 +30,8 @@ public:
                                size_t frames, size_t channel);
 
     // Per-sample API (kept for unit tests / fine-grained use).
-    void  push_dry_sample(float dry_sample, int channel);
-    float mix_wet_sample (float wet_sample, int channel);
+    void  push_dry_sample(float dry_sample, size_t channel);
+    float mix_wet_sample (float wet_sample, size_t channel);
 
     void   set_mix(float new_mix);
     size_t get_latency() const { return m_latency_samples; }

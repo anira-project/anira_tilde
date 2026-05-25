@@ -1,5 +1,6 @@
 #pragma once
 
+#include <anira/anira.h>
 #include <cstddef>
 #include <vector>
 
@@ -29,60 +30,36 @@ struct TensorLayout {
     // State-passing wiring.
     std::vector<StatePair> state_pairs;
 
-    // Flat signal-channel → (tensor index, channel-in-tensor). Populated by
-    // build_channel_maps(); always sized to total_signal_inputs() /
-    // total_signal_outputs() respectively.
+    // Flat signal-channel → (tensor index, channel-in-tensor). Built by
+    // build_channel_maps(); sized to total_signal_inputs()/outputs().
     std::vector<size_t> input_channel_to_tensor;
     std::vector<size_t> input_channel_in_tensor;
     std::vector<size_t> output_channel_to_tensor;
     std::vector<size_t> output_channel_in_tensor;
 
-    // Recompute the flat-channel-to-tensor maps from sig_*_channels.
-    // Call after sig_input_channels / sig_output_channels are filled.
-    void build_channel_maps() {
-        input_channel_to_tensor.clear();
-        input_channel_in_tensor.clear();
-        for (size_t t = 0; t < sig_input_channels.size(); ++t) {
-            for (size_t c = 0; c < sig_input_channels[t]; ++c) {
-                input_channel_to_tensor.push_back(t);
-                input_channel_in_tensor.push_back(c);
-            }
-        }
-        output_channel_to_tensor.clear();
-        output_channel_in_tensor.clear();
-        for (size_t t = 0; t < sig_output_channels.size(); ++t) {
-            for (size_t c = 0; c < sig_output_channels[t]; ++c) {
-                output_channel_to_tensor.push_back(t);
-                output_channel_in_tensor.push_back(c);
-            }
-        }
-    }
+    /// Construct a layout from anira's InferenceConfig and the parsed
+    /// state pairs. Builds sig/msg channel vectors, block sizes, state
+    /// pairs, and the channel→tensor lookups. Throws on malformed config
+    /// (e.g. message tensor whose element count isn't divisible by its
+    /// channel count).
+    static TensorLayout from(const anira::InferenceConfig& cfg,
+                             std::vector<StatePair>        state_pairs);
+
+    /// (Re)build the flat-channel-to-tensor lookups from sig_*_channels.
+    void build_channel_maps();
 
     size_t total_signal_inputs()  const { return input_channel_to_tensor.size(); }
     size_t total_signal_outputs() const { return output_channel_to_tensor.size(); }
 
-    bool is_state_input(size_t tensor_index) const {
-        for (const auto& p : state_pairs)
-            if (p.input_tensor == tensor_index) return true;
-        return false;
-    }
-    bool is_state_output(size_t tensor_index) const {
-        for (const auto& p : state_pairs)
-            if (p.output_tensor == tensor_index) return true;
-        return false;
-    }
+    bool is_state_tensor(const std::vector<StatePair>& pairs,
+                         size_t tensor_index, bool side_is_input) const;
 
-    // Dry/wet mixing is only meaningful when every signal in/out tensor
-    // pair has matching rate AND matching channel count.
-    bool mixing_makes_sense() const {
-        for (size_t i = 0;
-             i < sig_input_channels.size() && i < sig_output_channels.size(); ++i) {
-            if (input_block_sizes[i] != output_block_sizes[i]
-                || sig_input_channels[i] != sig_output_channels[i])
-                return false;
-        }
-        return true;
-    }
+    bool is_state_input (size_t tensor_index) const { return is_state_tensor(state_pairs, tensor_index, true); }
+    bool is_state_output(size_t tensor_index) const { return is_state_tensor(state_pairs, tensor_index, false); }
+
+    /// Dry/wet mixing is only meaningful when every signal in/out tensor
+    /// pair has matching rate AND matching channel count.
+    bool mixing_makes_sense() const;
 };
 
 } // namespace anira_tilde
