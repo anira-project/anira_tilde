@@ -1,7 +1,7 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "models/sine_oscillator.pt", "inference_backend": "LIBTORCH" }
+            { "model_path": "@MODELS_DIR@/sine_oscillator.pt", "inference_backend": "LIBTORCH" }
         ],
         "tensor_shape": [
             {
@@ -15,7 +15,7 @@
             "preprocess_input_size":       [512, 0],
             "postprocess_output_size":     [512, 0]
         },
-        "max_inference_time": 10.0
+        "max_inference_time": @sine_oscillator_test_max_inference_time@
     },
     "state_config": {
         "state_pairs": [

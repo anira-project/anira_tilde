@@ -28,7 +28,8 @@
             "inherits": "desktop-release",
             "binaryDir": "${sourceDir}/build/macos-x64/Release",
             "cacheVariables": {
-                "CMAKE_OSX_ARCHITECTURES": "x86_64"
+                "CMAKE_OSX_ARCHITECTURES": "x86_64",
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500"
             }
         },
         {
@@ -47,7 +48,8 @@
             "binaryDir": "${sourceDir}/build/desktop/Debug-asan",
             "cacheVariables": {
                 "ANIRA_TILDE_WITH_ASAN": "ON",
-                "ANIRA_TILDE_WITH_UBSAN": "ON"
+                "ANIRA_TILDE_WITH_UBSAN": "ON",
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500"
             }
         },
         {
@@ -56,7 +58,8 @@
             "inherits": "desktop-debug",
             "binaryDir": "${sourceDir}/build/desktop/Debug-tsan",
             "cacheVariables": {
-                "ANIRA_TILDE_WITH_TSAN": "ON"
+                "ANIRA_TILDE_WITH_TSAN": "ON",
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500"
             }
         },
         {
@@ -68,6 +71,7 @@
                 "ANIRA_TILDE_WITH_RTSAN": "ON",
                 "ANIRA_WITH_RTSAN": "ON",
                 "ANIRA_WITH_LOGGING": "OFF",
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500",
                 "CMAKE_C_COMPILER": "clang",
                 "CMAKE_CXX_COMPILER": "clang++"
             }

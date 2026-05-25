@@ -2,7 +2,7 @@
   "inference_config": {
     "model_data": [
       {
-        "model_path": "models/downsampler_x32.pt",
+        "model_path": "@MODELS_DIR@/downsampler_x32.pt",
         "inference_backend": "LIBTORCH"
       }
     ],
@@ -18,6 +18,6 @@
       "preprocess_input_size":       [32],
       "postprocess_output_size":     [1]
     },
-    "max_inference_time": 40.0
+    "max_inference_time": @downsample_test_max_inference_time@
   }
 }

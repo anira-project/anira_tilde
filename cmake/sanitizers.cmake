@@ -15,6 +15,10 @@ function(anira_tilde_apply_sanitizers)
     if(ANIRA_TILDE_WITH_UBSAN)
         list(APPEND _sanitizers undefined)
         add_compile_definitions(ANIRA_TILDE_WITH_UBSAN)
+        # anira's InferenceConfig::get_tensor_shape reads an uninitialized
+        # InferenceBackend enum field; suppress the enum sub-check until
+        # the upstream fix lands.
+        add_compile_options(-fno-sanitize=enum)
     endif()
     if(ANIRA_TILDE_WITH_TSAN)
         list(APPEND _sanitizers thread)

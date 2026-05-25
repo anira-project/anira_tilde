@@ -24,6 +24,17 @@ static constexpr size_t kRABuffer     = 16;
 static constexpr float  kRASampleRate = 44100.0f;
 static constexpr auto   kRACallbackMs = std::chrono::milliseconds(50);
 
+// Per-build extra warmup callbacks. Slow build flavours (sanitizers, x86_64
+// under Rosetta) bake a larger max_inference_time into the JSON via
+// ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD; the test then has to wait
+// at least one inference budget after latency drains, otherwise a single
+// in-flight inference can still be unfinished when we read the output.
+#ifndef ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS
+#define ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS 0
+#endif
+static constexpr int kRAExtraWarmupCallbacks =
+    2 + (ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS + 49) / 50;
+
 // Model: input_size=1, output_size=32.  One inference fires every 32 output
 // samples (= every 2 callbacks at buffer_size=16).
 // Model behaviour: output = input.expand(32), so constant input 1.0
@@ -57,7 +68,7 @@ TEST(RateAdaptation, UpsampleUsesFirstSampleAtBoundary) {
     };
 
     // Warm up past latency.
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
     for (int i = 0; i < warmup; ++i)
         run_callback();
 
@@ -134,10 +145,6 @@ TEST(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
 // Constant input 2.0 should produce 2.0 across the entire output buffer
 // once the pipeline is warm.  Requires sample-and-hold (design spec).
 TEST(RateAdaptation, DownsampleHoldsConstantValue) {
-#ifdef ANIRA_TILDE_WITH_ASAN
-    GTEST_SKIP() << "Skipped under AddressSanitizer: instrumentation slows "
-                 << "inference past max_inference_time, anira drops output.";
-#endif
     AniraProcessor proc(DOWNSAMPLE_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
@@ -157,7 +164,7 @@ TEST(RateAdaptation, DownsampleHoldsConstantValue) {
         std::this_thread::sleep_for(kRACallbackMs);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
     for (int i = 0; i < warmup; ++i)
         run_callback();
 
@@ -191,7 +198,7 @@ TEST(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
         std::this_thread::sleep_for(kRACallbackMs);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
     for (int i = 0; i < warmup; ++i)
         run_with(zero_buf);
 
@@ -243,7 +250,7 @@ TEST(RateAdaptation, UpsampleWithStateRateAdaptationAndStatePassedForward) {
         std::this_thread::sleep_for(kRACallbackMs);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
     for (int i = 0; i < warmup; ++i)
         run_callback();
 
@@ -291,7 +298,7 @@ TEST(RateAdaptation, UpsampleWithMultipleStateTensorsDoesNotCrash) {
         std::this_thread::sleep_for(kRACallbackMs);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + 2;
+    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
     for (int i = 0; i < warmup; ++i)
         run_callback();
 

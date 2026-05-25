@@ -1,7 +1,7 @@
 {
   "inference_config": {
     "model_data": [
-      { "model_path": "models/upsample_state.pt", "inference_backend": "LIBTORCH" }
+      { "model_path": "@MODELS_DIR@/upsample_state.pt", "inference_backend": "LIBTORCH" }
     ],
     "tensor_shape": [
       {
@@ -15,7 +15,7 @@
       "preprocess_input_size":       [1, 0],
       "postprocess_output_size":     [16, 0]
     },
-    "max_inference_time": 40.0
+    "max_inference_time": @upsample_state_test_max_inference_time@
   },
   "state_config": {
     "state_pairs": [
