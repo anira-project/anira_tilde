@@ -28,8 +28,6 @@ set(C74_MIN_SCRIPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/min-api/script)
 include(${C74_MIN_SCRIPT_DIR}/min-package.cmake)
 include(${C74_MIN_SCRIPT_DIR}/min-pretarget.cmake)
 
-option(ANIRA_WITH_EXAMPLES "Build with examples" ON)
-
 # Add the Min-API & the Anira library
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/min-lib)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/anira)
