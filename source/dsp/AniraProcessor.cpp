@@ -17,6 +17,7 @@ AniraProcessor::AniraProcessor(std::string json_config_path) :
     m_config_loader(json_config_path),
     m_anira_context(load_context_config(m_config_loader)),
     m_inference_config(load_inference_config(m_config_loader, json_config_path)),
+    m_pp_processor(m_inference_config),
     m_inference_handler(m_pp_processor, m_inference_config)
 {
     std::vector<size_t> inShapes;
