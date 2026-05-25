@@ -2,7 +2,9 @@
 #include <thread>
 #include <chrono>
 #include <anira/anira.h>
-#include "StatePassingPrePostProcessor.h"
+#include "anira_tilde/state_passing/StatePassingPrePostProcessor.h"
+
+using namespace anira_tilde;
 
 #ifndef STATE_TEST_MODEL_PATH
 #error "STATE_TEST_MODEL_PATH must be defined via CMake"

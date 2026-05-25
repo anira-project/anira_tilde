@@ -2,7 +2,9 @@
 #include <thread>
 #include <chrono>
 #include <cmath>
-#include "AniraProcessor.h"
+#include "anira_tilde/inference/Session.h"
+
+using namespace anira_tilde;
 
 #ifndef SINE_OSC_JSON_PATH
 #error "SINE_OSC_JSON_PATH must be defined via CMake"
@@ -28,11 +30,11 @@ static constexpr float  kAPSampleRate     = 44100.0f;
 //   pre_process(N) therefore always read state written by post_process(N-2),
 //   not post_process(N-1): state was perpetually one inference stale.
 //
-// The fix in AniraProcessor::process(): call pop_data (→ new_data_request
+// The fix in anira_tilde::Session::process(): call pop_data (→ new_data_request
 // → post_process(N-1) writes fresh state) BEFORE push_data (→
 // new_data_submitted → pre_process(N) reads it).
-TEST(AniraProcessor, MaxLikeCallbackPatternAreContinuous) {
-    AniraProcessor proc(SINE_OSC_JSON_PATH);
+TEST(AniraSession, MaxLikeCallbackPatternAreContinuous) {
+    anira_tilde::Session proc(SINE_OSC_JSON_PATH);
     proc.prepare(kAPSineSignalSize, kAPSampleRate);
 
     const float freq     = 440.0f;
@@ -91,15 +93,15 @@ TEST(AniraProcessor, MaxLikeCallbackPatternAreContinuous) {
     }
 }
 
-TEST(AniraProcessor, RelativeModelPathLoads) {
+TEST(AniraSession, RelativeModelPathLoads) {
     // Verifies that model_path values relative to the JSON config file are resolved correctly.
-    EXPECT_NO_THROW(AniraProcessor proc(SINE_OSC_RELATIVE_JSON_PATH));
+    EXPECT_NO_THROW(anira_tilde::Session proc(SINE_OSC_RELATIVE_JSON_PATH));
 }
 
 #else  // !USE_LIBTORCH
 
-TEST(AniraProcessor, SkippedWithoutLibTorch) {
-    GTEST_SKIP() << "LibTorch not available – AniraProcessor integration test skipped";
+TEST(AniraSession, SkippedWithoutLibTorch) {
+    GTEST_SKIP() << "LibTorch not available – anira_tilde::Session integration test skipped";
 }
 
 #endif  // USE_LIBTORCH

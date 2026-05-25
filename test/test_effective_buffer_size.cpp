@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
-#include "effective_buffer_size.h"
+#include "anira_tilde/rate_adaptation/EffectiveBufferSize.h"
+
+using namespace anira_tilde;
 
 // No upsampling: effective size equals host buffer size.
 TEST(EffectiveBufferSize, NoUpsampling) {

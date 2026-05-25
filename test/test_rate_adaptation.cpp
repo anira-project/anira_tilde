@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <chrono>
-#include "AniraProcessor.h"
+#include "anira_tilde/inference/Session.h"
+
+using namespace anira_tilde;
 
 #ifndef RATE_ADAPT_JSON_PATH
 #error "RATE_ADAPT_JSON_PATH must be defined via CMake"
@@ -46,7 +48,7 @@ static constexpr int kRAExtraWarmupCallbacks =
 // overflows (anira logs "Buffer overflow") and keeps only the newest samples,
 // producing output ≈ [kRABuffer-1, ...] instead of [0, ...].
 TEST(RateAdaptation, UpsampleUsesFirstSampleAtBoundary) {
-    AniraProcessor proc(RATE_ADAPT_JSON_PATH);
+    anira_tilde::Session proc(RATE_ADAPT_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
     std::vector<float> in_buf(kRABuffer);
@@ -81,7 +83,7 @@ TEST(RateAdaptation, UpsampleUsesFirstSampleAtBoundary) {
 
 // Verify that the inference boundary falls exactly every output_size samples.
 TEST(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
-    AniraProcessor proc(RATE_ADAPT_JSON_PATH);
+    anira_tilde::Session proc(RATE_ADAPT_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
     std::vector<float> zero_buf(kRABuffer, 0.0f);
@@ -145,7 +147,7 @@ TEST(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
 // Constant input 2.0 should produce 2.0 across the entire output buffer
 // once the pipeline is warm.  Requires sample-and-hold (design spec).
 TEST(RateAdaptation, DownsampleHoldsConstantValue) {
-    AniraProcessor proc(DOWNSAMPLE_JSON_PATH);
+    anira_tilde::Session proc(DOWNSAMPLE_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
     std::vector<float> in_buf(kRABuffer, 2.0f);
@@ -178,7 +180,7 @@ TEST(RateAdaptation, DownsampleHoldsConstantValue) {
 // After zeros are stable, switching to 2.0 for one full boundary window should
 // flip all output to 2.0.
 TEST(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
-    AniraProcessor proc(DOWNSAMPLE_JSON_PATH);
+    anira_tilde::Session proc(DOWNSAMPLE_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
     std::vector<float> zero_buf(kRABuffer, 0.0f);
@@ -231,7 +233,7 @@ TEST(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
 //   (a) each have all-equal samples (one inference fills one block of 16), and
 //   (b) differ by a positive integer multiple of 1.0 (state is advancing).
 TEST(RateAdaptation, UpsampleWithStateRateAdaptationAndStatePassedForward) {
-    AniraProcessor proc(UPSAMPLE_STATE_JSON_PATH);
+    anira_tilde::Session proc(UPSAMPLE_STATE_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
     std::vector<float> in_buf(kRABuffer, 0.0f);  // latent = 0 → audio = state
@@ -279,7 +281,7 @@ TEST(RateAdaptation, UpsampleWithStateRateAdaptationAndStatePassedForward) {
 // a SIGSEGV or memory corruption detectable via incorrect audio output.
 // ---------------------------------------------------------------------------
 TEST(RateAdaptation, UpsampleWithMultipleStateTensorsDoesNotCrash) {
-    AniraProcessor proc(UPSAMPLE_MULTISTATE_JSON_PATH);
+    anira_tilde::Session proc(UPSAMPLE_MULTISTATE_JSON_PATH);
     proc.prepare(kRABuffer, kRASampleRate);
 
     std::vector<float> in_buf(kRABuffer, 0.0f);

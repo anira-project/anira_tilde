@@ -3,7 +3,9 @@
 #include <vector>
 #include <cstddef>
 
-/// Compute the effective buffer size to pass to AniraProcessor::prepare.
+namespace anira_tilde {
+
+/// Compute the effective buffer size to pass to Session::prepare.
 ///
 /// For upsampling tensors (input_size < output_size) the host must drive the
 /// processor with a buffer equal to the model's input_size, not host_buffer_size,
@@ -29,3 +31,5 @@ inline size_t compute_effective_buffer_size(
     if (effective == 0) effective = host_buffer_size;
     return effective;
 }
+
+} // namespace anira_tilde

@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <sstream>
-#include "StatePairParser.h"
+#include "anira_tilde/state_passing/StatePairParser.h"
+
+using namespace anira_tilde;
 
 // ---- parse_state_pairs(istream) ----
 

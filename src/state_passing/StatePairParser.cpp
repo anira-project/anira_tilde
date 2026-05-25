@@ -1,7 +1,9 @@
-#include "StatePairParser.h"
+#include "anira_tilde/state_passing/StatePairParser.h"
 
 #include <fstream>
 #include <nlohmann/json.hpp>
+
+namespace anira_tilde {
 
 std::vector<StatePair> parse_state_pairs(std::istream& stream) {
     std::vector<StatePair> pairs;
@@ -31,3 +33,5 @@ std::vector<StatePair> parse_state_pairs(const std::string& json_path) {
     if (!file.is_open()) return {};
     return parse_state_pairs(file);
 }
+
+} // namespace anira_tilde

@@ -2,7 +2,11 @@
 
 #include <anira/anira.h>
 #include <vector>
-#include "StatePairParser.h"
+
+#include "anira_tilde/Exports.h"
+#include "anira_tilde/state_passing/StatePairParser.h"
+
+namespace anira_tilde {
 
 // PrePostProcessor subclass for stateful (e.g. RNN) models where one or more
 // output tensors represent state to be passed back as input on the next inference.
@@ -19,7 +23,7 @@
 //
 // State tensors are NOT exposed as Max message inlets/outlets; they are
 // managed entirely internally. Initial state is zeros.
-class StatePassingPrePostProcessor : public anira::PrePostProcessor {
+class ANIRA_TILDE_API StatePassingPrePostProcessor : public anira::PrePostProcessor {
 public:
     StatePassingPrePostProcessor(anira::InferenceConfig& config,
                                   const std::vector<StatePair>& state_pairs)
@@ -53,3 +57,5 @@ public:
 private:
     std::vector<StatePair> m_state_pairs;
 };
+
+} // namespace anira_tilde
