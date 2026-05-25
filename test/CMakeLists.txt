@@ -42,7 +42,10 @@ target_link_libraries(anira_tilde_tests
 target_compile_features(anira_tilde_tests PRIVATE cxx_std_20)
 
 include(GoogleTest)
-gtest_discover_tests(anira_tilde_tests)
+# PRE_TEST defers discovery to ctest run time, which is required when
+# cross-compiling (e.g. building macOS x86_64 on an arm64 runner) since
+# the binary can't necessarily be executed at configure time.
+gtest_discover_tests(anira_tilde_tests DISCOVERY_MODE PRE_TEST)
 
 # On Windows, copy anira's runtime DLLs (anira + libtorch/onnx/tflite backends)
 # next to the test executable so tests can locate them at runtime.

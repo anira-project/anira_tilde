@@ -26,6 +26,7 @@
             "displayName": "Windows Release",
             "binaryDir": "${sourceDir}/build/windows",
             "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
                 "ANIRA_TILDE_WITH_TESTS": "ON"
             }
         }
