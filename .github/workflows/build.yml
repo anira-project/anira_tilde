@@ -1,0 +1,46 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-x86_64
+            os: macos-latest
+          - name: macOS-arm64
+            os: macos-latest
+          - name: Windows-x86_64
+            os: windows-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: setup build tools
+        uses: tanh-lab/ci-actions/setup-cpp-build-tools@main
+
+      - name: configure and build
+        uses: tanh-lab/ci-actions/cmake-build@main
+        with:
+          BUILD_TYPE: Release
+          TARGETS: anira_tilde
+
+      - name: upload external
+        uses: actions/upload-artifact@v4
+        with:
+          name: anira_tilde-${{ matrix.name }}
+          path: externals/
