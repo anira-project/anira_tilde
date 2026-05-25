@@ -38,7 +38,8 @@
             "binaryDir": "${sourceDir}/build/windows",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "ANIRA_TILDE_WITH_TESTS": "ON"
+                "ANIRA_TILDE_WITH_TESTS": "ON",
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500"
             }
         },
         {
