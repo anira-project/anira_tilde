@@ -43,3 +43,20 @@ target_compile_features(anira_tilde_tests PRIVATE cxx_std_20)
 
 include(GoogleTest)
 gtest_discover_tests(anira_tilde_tests)
+
+# On Windows, copy anira's runtime DLLs (anira + libtorch/onnx/tflite backends)
+# next to the test executable so tests can locate them at runtime.
+if(WIN32)
+    add_custom_command(TARGET anira_tilde_tests PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${ANIRA_SHARED_LIBS_WIN}
+            $<TARGET_FILE_DIR:anira_tilde_tests>
+        COMMAND_EXPAND_LISTS
+    )
+    add_custom_command(TARGET anira_tilde_tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:anira_tilde_tests>
+            $<TARGET_FILE_DIR:anira_tilde_tests>
+        COMMAND_EXPAND_LISTS
+    )
+endif()

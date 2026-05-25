@@ -1,0 +1,56 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "desktop-release",
+            "displayName": "Desktop Release",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/desktop/Release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ANIRA_TILDE_WITH_TESTS": "ON"
+            }
+        },
+        {
+            "name": "macos-x64-release",
+            "displayName": "macOS x86_64 Release",
+            "inherits": "desktop-release",
+            "binaryDir": "${sourceDir}/build/macos-x64/Release",
+            "cacheVariables": {
+                "CMAKE_OSX_ARCHITECTURES": "x86_64"
+            }
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "binaryDir": "${sourceDir}/build/windows",
+            "cacheVariables": {
+                "ANIRA_TILDE_WITH_TESTS": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "desktop-release",    "configurePreset": "desktop-release" },
+        { "name": "macos-x64-release",  "configurePreset": "macos-x64-release" },
+        { "name": "windows-release",    "configurePreset": "windows-release", "configuration": "Release" }
+    ],
+    "testPresets": [
+        {
+            "name": "desktop-release",
+            "configurePreset": "desktop-release",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "macos-x64-release",
+            "configurePreset": "macos-x64-release",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "windows-release",
+            "configurePreset": "windows-release",
+            "configuration": "Release",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}

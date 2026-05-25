@@ -18,12 +18,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS-x86_64
-            os: macos-latest
           - name: macOS-arm64
             os: macos-latest
+            preset: desktop-release
+          - name: macOS-x86_64
+            os: macos-latest
+            preset: macos-x64-release
           - name: Windows-x86_64
             os: windows-latest
+            preset: windows-release
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -41,8 +44,12 @@ jobs:
       - name: configure and build
         uses: tanh-lab/ci-actions/cmake-build@main
         with:
-          BUILD_TYPE: Release
-          TARGETS: anira_tilde
+          PRESET: ${{ matrix.preset }}
+
+      - name: run tests
+        uses: tanh-lab/ci-actions/cmake-test@main
+        with:
+          PRESET: ${{ matrix.preset }}
 
       - name: upload external
         uses: actions/upload-artifact@v4
