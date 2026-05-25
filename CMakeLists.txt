@@ -28,6 +28,8 @@ set(C74_MIN_SCRIPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/min-api/script)
 include(${C74_MIN_SCRIPT_DIR}/min-package.cmake)
 include(${C74_MIN_SCRIPT_DIR}/min-pretarget.cmake)
 
+option(ANIRA_TILDE_WITH_TESTS "Build unit tests" OFF)
+
 # Add the Min-API & the Anira library
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/min-lib)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/anira)
@@ -39,6 +41,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/modules/anira)
 add_library(${PROJECT_NAME} MODULE
     source/AniraTilde.cpp
     source/dsp/AniraProcessor.cpp
+    source/dsp/StatePairParser.cpp
     source/utils/Mixer.cpp
 )
 
@@ -49,3 +52,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 target_link_libraries(${PROJECT_NAME} PRIVATE anira::anira)
 include(${C74_MIN_SCRIPT_DIR}/min-posttarget.cmake)
+
+if(ANIRA_TILDE_WITH_TESTS)
+    enable_testing()
+    add_subdirectory(test)
+endif()

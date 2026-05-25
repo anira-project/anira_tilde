@@ -106,6 +106,10 @@ AniraTilde::AniraTilde(const c74::min::atoms& args) :
             m_anira_processor->inMsgCh.size(),
             m_anira_processor->outMsgCh.size()
         );
+        if (!m_anira_processor->get_state_pairs().empty()) {
+            c74::max::post("anira~: State-passing mode active — %zu state pair(s) fed back internally.",
+                           m_anira_processor->get_state_pairs().size());
+        }
         init_external(m_anira_processor->inSigCh, m_anira_processor->outSigCh, m_anira_processor->inMsgCh, m_anira_processor->outMsgCh);
     }     
 }

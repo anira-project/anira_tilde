@@ -3,6 +3,8 @@
 #include <anira/anira.h>
 #include <vector>
 #include <string>
+#include "StatePairParser.h"
+#include "StatePassingPrePostProcessor.h"
 
 class AniraProcessor {
 public:
@@ -23,11 +25,18 @@ public:
     std::vector<size_t> input_sizes;
     std::vector<size_t> output_sizes;
 
+    const std::vector<StatePair>& get_state_pairs() const { return m_state_pairs; }
+
 private:
+    bool is_state_input(size_t tensor_index) const;
+    bool is_state_output(size_t tensor_index) const;
+
+    // NOTE: declaration order matches construction order in the initializer list.
     anira::JsonConfigLoader m_config_loader;
     anira::ContextConfig m_anira_context;
     anira::InferenceConfig m_inference_config;
-    anira::PrePostProcessor m_pp_processor;
+    std::vector<StatePair> m_state_pairs;          // must be before m_pp_processor
+    StatePassingPrePostProcessor m_pp_processor;   // must be before m_inference_handler
     anira::InferenceHandler m_inference_handler;
 
     anira::InferenceBackend m_selected_backend;
