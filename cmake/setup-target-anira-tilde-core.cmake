@@ -1,16 +1,18 @@
 # Pure C++ library that holds the host-agnostic inference engine.
 
+set(_core_dir ${CMAKE_CURRENT_SOURCE_DIR}/targets/anira_tilde_core)
+
 add_library(anira_tilde_core STATIC
-    src/Engine.cpp
-    src/inference/Session.cpp
-    src/inference/TensorLayout.cpp
-    src/mixing/Mixer.cpp
-    src/rate_adaptation/RateAdaptor.cpp
-    src/state_passing/StatePairParser.cpp
+    ${_core_dir}/src/Engine.cpp
+    ${_core_dir}/src/inference/Session.cpp
+    ${_core_dir}/src/inference/TensorLayout.cpp
+    ${_core_dir}/src/mixing/Mixer.cpp
+    ${_core_dir}/src/rate_adaptation/RateAdaptor.cpp
+    ${_core_dir}/src/state_passing/StatePairParser.cpp
 )
 
 target_include_directories(anira_tilde_core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${_core_dir}/include
 )
 
 target_link_libraries(anira_tilde_core PUBLIC anira::anira)

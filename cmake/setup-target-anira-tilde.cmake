@@ -1,11 +1,14 @@
 # Thin Min-API wrapper that ships as the Max/MSP external.
 
+set(_max_dir ${CMAKE_CURRENT_SOURCE_DIR}/targets/anira_tilde)
+
 add_library(${PROJECT_NAME} MODULE
-    max/AniraTilde.cpp
+    ${_max_dir}/src/AniraTilde.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     "${C74_INCLUDES}"
+    ${_max_dir}/src
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE anira_tilde_core)
