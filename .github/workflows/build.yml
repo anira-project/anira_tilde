@@ -1,0 +1,108 @@
+name: build
+
+on:
+  push:
+    branches: [main, feat/release]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-arm64
+            os: macos-latest
+            preset: desktop-release
+          - name: macOS-x86_64
+            os: macos-latest
+            preset: macos-x64-release
+          - name: Windows-x86_64
+            os: windows-latest
+            preset: windows-release
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: unshallow submodules for git describe
+        shell: bash
+        run: git submodule foreach --recursive 'git fetch --unshallow --tags origin 2>/dev/null || git fetch --tags origin'
+
+      - name: setup build tools
+        uses: tanh-lab/ci-actions/setup-cpp-build-tools@main
+
+      - name: configure and build
+        uses: tanh-lab/ci-actions/cmake-build@main
+        with:
+          PRESET: ${{ matrix.preset }}
+
+      - name: run tests
+        uses: tanh-lab/ci-actions/cmake-test@main
+        with:
+          PRESET: ${{ matrix.preset }}
+
+      - name: stage Max package
+        shell: bash
+        run: |
+          STAGE="package/anira_tilde"
+          mkdir -p "$STAGE"
+          cp -R externals help examples docs "$STAGE/"
+          cp package-info.json README.md LICENSE "$STAGE/"
+          cp .github/assets/icon.png "$STAGE/icon.png"
+
+      - name: upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: anira_tilde-${{ matrix.name }}
+          path: package/
+
+  sanitizers:
+    name: ${{ matrix.preset }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { preset: desktop-debug-asan,  needs_llvm20: false }
+          - { preset: desktop-debug-tsan,  needs_llvm20: false }
+          - { preset: desktop-debug-rtsan, needs_llvm20: true }
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: unshallow submodules for git describe
+        shell: bash
+        run: git submodule foreach --recursive 'git fetch --unshallow --tags origin 2>/dev/null || git fetch --tags origin'
+
+      - name: setup build tools
+        uses: tanh-lab/ci-actions/setup-cpp-build-tools@main
+
+      - name: install llvm@20 for RTSan
+        if: matrix.needs_llvm20
+        shell: bash
+        run: |
+          brew install llvm@20
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+
+      - name: configure and build
+        uses: tanh-lab/ci-actions/cmake-build@main
+        with:
+          PRESET: ${{ matrix.preset }}
+
+      - name: run tests
+        uses: tanh-lab/ci-actions/cmake-test@main
+        with:
+          PRESET: ${{ matrix.preset }}
