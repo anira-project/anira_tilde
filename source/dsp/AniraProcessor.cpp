@@ -160,7 +160,16 @@ void AniraProcessor::prepare(size_t buffer_size, double sample_rate)
     }
 
     if (use_custom_latency) {
-        m_inference_handler.prepare(host_config, decoder_latency, decoder_index);
+        // For upsample decoders (input_size < output_size), we fire one inference per
+        // output_size audio samples, not per audio sample.
+        float latent_sample_rate = static_cast<float>(sample_rate)
+            * static_cast<float>(input_sizes[decoder_index])
+            / static_cast<float>(output_sizes[decoder_index]);
+        anira::HostConfig upsample_host_config {
+            static_cast<float>(input_sizes[decoder_index]),
+            latent_sample_rate,
+        };
+        m_inference_handler.prepare(upsample_host_config, decoder_latency, decoder_index);
     } else {
         m_inference_handler.prepare(host_config);
     }
