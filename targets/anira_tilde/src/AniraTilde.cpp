@@ -253,3 +253,14 @@ void AniraTilde::init_external(const std::vector<size_t>& sig_inputs,
 }
 
 MIN_EXTERNAL_CUSTOM(AniraTilde, anira~);
+
+// Stable, C-linkage entry that the loader shim (anira~.mxo) calls via dlsym
+// once it has confirmed no conflicting libtorch is present. Forwards to the
+// Min-generated ext_main, which registers the real anira~ class. Only the
+// macOS build splits off a shim (see setup-target-anira-tilde.cmake); on other
+// platforms this external is loaded directly and the entry is unused.
+#ifdef __APPLE__
+extern "C" __attribute__((visibility("default"))) void anira_tilde_impl_main(void* r) {
+    ext_main(r);
+}
+#endif
