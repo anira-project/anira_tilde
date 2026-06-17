@@ -62,8 +62,9 @@ Disabled by default. Enable with the `ANIRA_TILDE_WITH_TESTS` option (already
 set ON in the debug + sanitizer presets):
 
 ```bash
-cmake --preset desktop-debug      # tests on
-ctest --preset desktop-debug
+cmake --preset desktop-debug          # configure (tests on)
+cmake --build --preset desktop-debug  # build the test executable
+ctest --preset desktop-debug          # run tests
 ```
 
 The test target links only against `anira_tilde_core` (the host-agnostic
