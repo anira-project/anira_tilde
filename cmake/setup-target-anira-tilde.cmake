@@ -41,10 +41,14 @@ if(APPLE)
     target_link_libraries(anira_tilde_impl PRIVATE
         ${MAX_AUDIO_API_LIBRARY} ${MAX_JITTER_API_LIBRARY})
 
+    # Sits next to the anira~.mxo shim (which min-posttarget drops in
+    # CMAKE_LIBRARY_OUTPUT_DIRECTORY) so Guard.cpp can dlopen it by relative
+    # path. Follows C74_LIBRARY_OUTPUT_DIRECTORY so dev/test builds keep it out
+    # of the source externals/ that Max loads (see setup-dependencies.cmake).
     set_target_properties(anira_tilde_impl PROPERTIES
         PREFIX ""
         OUTPUT_NAME "anira_tilde_impl"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/externals"
+        LIBRARY_OUTPUT_DIRECTORY "${C74_LIBRARY_OUTPUT_DIRECTORY}"
     )
 
     # Ad-hoc sign so the dylib can be dlopen'd on Apple Silicon.

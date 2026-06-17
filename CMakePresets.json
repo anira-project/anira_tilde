@@ -20,7 +20,8 @@
             "binaryDir": "${sourceDir}/build/desktop/Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "ANIRA_TILDE_WITH_TESTS": "ON"
+                "ANIRA_TILDE_WITH_TESTS": "ON",
+                "C74_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/desktop/Debug/externals"
             }
         },
         {
@@ -51,7 +52,8 @@
             "cacheVariables": {
                 "ANIRA_TILDE_WITH_ASAN": "ON",
                 "ANIRA_TILDE_WITH_UBSAN": "ON",
-                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500"
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500",
+                "C74_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/desktop/Debug-asan/externals"
             }
         },
         {
@@ -61,7 +63,8 @@
             "binaryDir": "${sourceDir}/build/desktop/Debug-tsan",
             "cacheVariables": {
                 "ANIRA_TILDE_WITH_TSAN": "ON",
-                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500"
+                "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500",
+                "C74_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/desktop/Debug-tsan/externals"
             }
         },
         {
@@ -75,7 +78,8 @@
                 "ANIRA_WITH_LOGGING": "OFF",
                 "ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD": "500",
                 "CMAKE_C_COMPILER": "clang",
-                "CMAKE_CXX_COMPILER": "clang++"
+                "CMAKE_CXX_COMPILER": "clang++",
+                "C74_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/desktop/Debug-rtsan/externals"
             }
         }
     ],
