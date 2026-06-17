@@ -1,0 +1,23 @@
+{
+  "inference_config": {
+    "model_data": [
+      {
+        "model_path": "@MODELS_DIR@/multichannel_out.pt",
+        "inference_backend": "LIBTORCH"
+      }
+    ],
+    "tensor_shape": [
+      {
+        "input_shape":  [[1, 1, 1]],
+        "output_shape": [[1, 4, 1]]
+      }
+    ],
+    "processing_spec": {
+      "preprocess_input_channels":   [1],
+      "postprocess_output_channels": [4],
+      "preprocess_input_size":       [1],
+      "postprocess_output_size":     [1]
+    },
+    "max_inference_time": @multichannel_out_test_max_inference_time@
+  }
+}

@@ -17,6 +17,7 @@ set(_test_json_bases
     rate_adapt_test         40
     upsample_state_test     40
     upsample_multistate_test 40
+    multichannel_out_test   40
     sine_oscillator_test    10
 )
 # Absolute path to the test models, baked into each generated JSON so
@@ -57,6 +58,7 @@ target_compile_definitions(anira_tilde_tests PRIVATE
     UPSAMPLE_STATE_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/upsample_state_test.json"
     UPSAMPLE_MULTISTATE_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/upsample_multistate_test.json"
     DOWNSAMPLE_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/downsample_test.json"
+    MULTICHANNEL_OUT_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/multichannel_out_test.json"
 )
 
 target_link_libraries(anira_tilde_tests

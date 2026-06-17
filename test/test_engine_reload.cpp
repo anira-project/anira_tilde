@@ -10,6 +10,9 @@ using namespace anira_tilde;
 #ifndef DOWNSAMPLE_JSON_PATH
 #error "DOWNSAMPLE_JSON_PATH must be defined via CMake"
 #endif
+#ifndef MULTICHANNEL_OUT_JSON_PATH
+#error "MULTICHANNEL_OUT_JSON_PATH must be defined via CMake"
+#endif
 
 #ifdef USE_LIBTORCH
 
@@ -81,6 +84,32 @@ TEST(EngineReload, ReprepareRevivesEngine) {
                                   engine.layout().sig_input_channels.size(),
                                   engine.layout().sig_output_channels.size(),
                                   64));
+}
+
+// Regression: a single output tensor carrying multiple channels (the encode-
+// style RAVE shape, e.g. 16 latents in one [1, C, 1] tensor). The dry/wet
+// Mixer's per-channel delay state must be sized to the total output-channel
+// count, not the output-tensor count. Sizing it to the tensor count (1) made
+// every channel >= 1 index out of bounds in process_channel_block and crashed
+// the audio thread with a write fault.
+TEST(EngineReload, MultiChannelSingleTensorOutputDoesNotCrash) {
+    Engine engine;
+    ASSERT_TRUE(engine.load_config(MULTICHANNEL_OUT_JSON_PATH));
+
+    ASSERT_EQ(engine.layout().sig_output_channels.size(), 1u)
+        << "fixture must have exactly one output tensor";
+    const size_t n_in_ch  = engine.layout().total_signal_inputs();
+    const size_t n_out_ch = engine.layout().total_signal_outputs();
+    ASSERT_GT(n_out_ch, 1u) << "fixture's single output tensor must be multi-channel";
+
+    engine.prepare(64, 44100.0);
+    ASSERT_TRUE(engine.ready());
+
+    // Run several blocks so the latency delay line wraps and every output
+    // channel's read/write indices are exercised. Pre-fix this faults on the
+    // first block.
+    for (int i = 0; i < 8; ++i)
+        EXPECT_NO_THROW(run_one_block(engine, n_in_ch, n_out_ch, 64));
 }
 
 TEST(EngineReload, BadPathLeavesEngineEmpty) {
