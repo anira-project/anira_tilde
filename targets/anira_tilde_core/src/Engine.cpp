@@ -47,7 +47,7 @@ void Engine::prepare(size_t host_buffer_size, double host_sample_rate) {
     }
 
     m_mixer.prepare(host_sample_rate, host_buffer_size,
-                    m_session ? m_session->layout().sig_output_channels.size() : 0,
+                    m_session ? m_session->layout().total_signal_outputs() : 0,
                     static_cast<size_t>(latency));
     m_ready.store(true, std::memory_order_release);
 }

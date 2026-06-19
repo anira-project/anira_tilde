@@ -37,23 +37,21 @@ static anira::InferenceConfig load_inference_config(anira::JsonConfigLoader& loa
     }
 
 #ifdef USE_LIBTORCH
-    // Validate any model_function names before threads start – get_method throws
-    // a fatal LibTorch assertion if the name doesn't exist in the model.
+    // Validate any model_function names and load LibTorch models before threads
+    // start - get_method throws a fatal LibTorch assertion if the name doesn't
+    // exist in the model.
     for (auto& md : config.m_model_data) {
-        if (md.m_backend == anira::InferenceBackend::LIBTORCH && !md.m_is_binary
-            && !md.m_model_function.empty()) {
-            const std::string model_path(static_cast<char*>(md.m_data), md.m_size);
-            try {
-                auto module = torch::jit::load(model_path);
-                if (!module.find_method(md.m_model_function)) {
-                    throw std::runtime_error(
-                        "model '" + model_path + "' has no method '" + md.m_model_function +
-                        "' – check 'model_function' in your JSON config");
-                }
-            } catch (const c10::Error& e) {
+        if (md.m_backend != anira::InferenceBackend::LIBTORCH || md.m_is_binary) continue;
+        const std::string model_path(static_cast<char*>(md.m_data), md.m_size);
+        try {
+            auto module = torch::jit::load(model_path);
+            if (!md.m_model_function.empty() && !module.find_method(md.m_model_function)) {
                 throw std::runtime_error(
-                    "failed to load model '" + model_path + "' for validation: " + e.what());
+                    "model '" + model_path + "' has no method '" + md.m_model_function + 
+                    "' - check model function in your JSON config");
             }
+        } catch (const c10::Error& e) {
+            throw std::runtime_error("failed to load model '" + model_path + "': " + e.what());
         }
     }
 #endif
@@ -109,7 +107,9 @@ void Session::prepare(size_t buffer_size, double sample_rate) {
         m_inference_handler.prepare(host_config);
     }
 
-    m_selected_backend = anira::InferenceBackend::LIBTORCH;
+    m_selected_backend = m_inference_config.m_model_data.empty()
+        ? anira::InferenceBackend::LIBTORCH
+        : m_inference_config.m_model_data.front().m_backend;
     m_inference_handler.set_inference_backend(m_selected_backend);
 
     m_rate_adaptor.prepare(m_layout, buffer_size);
