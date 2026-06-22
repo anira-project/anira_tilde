@@ -252,15 +252,26 @@ void AniraTilde::init_external(const std::vector<size_t>& sig_inputs,
     m_msg_outlets.push_back(std::move(latency_out));
 }
 
-MIN_EXTERNAL_CUSTOM(AniraTilde, anira~);
+// Registration. anira~ and mc.anira~ are separate translation units / binaries
+// because min-api keeps the registered class in a per-TU `this_class` global and
+// only supports one class per TU; mc.anira~ has the symmetric entry in
+// McAniraTilde.cpp.
+namespace {
+    void register_anira(void* r) {
+        c74::min::wrap_as_max_external<AniraTilde>("AniraTilde", "anira~", r);
+    }
+}
 
-// Stable, C-linkage entry that the loader shim (anira~.mxo) calls via dlsym
-// once it has confirmed no conflicting libtorch is present. Forwards to the
-// Min-generated ext_main, which registers the real anira~ class. Only the
-// macOS build splits off a shim (see setup-target-anira-tilde.cmake); on other
-// platforms this external is loaded directly and the entry is unused.
 #ifdef __APPLE__
+// macOS: the libtorch-collision guard lives in a separate shim bundle that
+// dlopens this dylib and calls this C-linkage entry once it has cleared the
+// guard (see Guard.cpp / setup-target-anira-tilde.cmake).
 extern "C" __attribute__((visibility("default"))) void anira_tilde_impl_main(void* r) {
-    ext_main(r);
+    register_anira(r);
+}
+#else
+// Other platforms load this module (anira~) directly.
+void ext_main(void* r) {
+    register_anira(r);
 }
 #endif
