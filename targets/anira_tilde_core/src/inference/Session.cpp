@@ -61,6 +61,15 @@ static anira::InferenceConfig load_inference_config(anira::JsonConfigLoader& loa
     if (!parse_state_pairs(path).empty()) {
         config.m_num_parallel_processors = 1;
     }
+
+    // Force a per-session processor. anira's shared processor pool stores the
+    // InferenceConfig *by reference* (BackendBase::m_inference_config), bound to
+    // whichever session first created the processor. If two instances share a
+    // config and the first is closed, that reference dangles and the next
+    // inference reads freed memory (use-after-free crash). A session-exclusive
+    // processor's lifetime matches its session, so the reference stays valid.
+    config.m_session_exclusive_processor = true;
+
     return config;
 }
 

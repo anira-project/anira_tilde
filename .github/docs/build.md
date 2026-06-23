@@ -62,13 +62,30 @@ Disabled by default. Enable with the `ANIRA_TILDE_WITH_TESTS` option (already
 set ON in the debug + sanitizer presets):
 
 ```bash
-cmake --preset desktop-debug          # configure (tests on)
-cmake --build --preset desktop-debug  # build the test executable
-ctest --preset desktop-debug          # run tests
+cmake --preset desktop-debug                              # configure (tests on)
+cmake --build --preset desktop-debug --target anira_tilde_tests  # build just the tests
+ctest --preset desktop-debug                             # run tests
 ```
 
 The test target links only against `anira_tilde_core` (the host-agnostic
-library), so the Min-API isn't needed for running tests.
+library), so the Min-API isn't needed for running tests. Passing
+`--target anira_tilde_tests` also skips relinking the Max external.
+
+### Debug builds don't disturb an installed external
+
+The debug and sanitizer presets redirect `C74_LIBRARY_OUTPUT_DIRECTORY` into
+their own build tree (e.g. `build/desktop/Debug/externals/`), so the
+`libanira.*` and external they produce never overwrite the **release** builds in
+`externals/`. (The external links `libanira` from its
+own directory at runtime, so without this a debug — or sanitizer-instrumented —
+`libanira` would silently replace the release build.)
+
+Only `desktop-release` / `*-release` presets write to the source `externals/`.
+To point any build at a custom location, override the variable:
+
+```bash
+cmake --preset desktop-debug -DC74_LIBRARY_OUTPUT_DIRECTORY=/some/where/externals
+```
 
 ### Slow build flavours (sanitizers, Rosetta-emulated x86_64)
 
