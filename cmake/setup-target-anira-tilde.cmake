@@ -134,6 +134,15 @@ else()
     target_link_libraries(mc_anira_tilde PRIVATE anira_tilde_core)
     anira_tilde_apply_cxx_standard(mc_anira_tilde)
 
+    # min-posttarget (via max-posttarget) links the Max import libraries into
+    # ${PROJECT_NAME} only. Windows resolves all symbols at link time, so
+    # mc_anira_tilde needs them too (macOS leaves Max symbols undefined for the
+    # host to provide at load time).
+    if(WIN32)
+        target_link_libraries(mc_anira_tilde PRIVATE
+            ${MaxAPI_LIB} ${MaxAudio_LIB} ${Jitter_LIB})
+    endif()
+
     get_target_property(_ext_suffix ${PROJECT_NAME} SUFFIX)
     set_target_properties(mc_anira_tilde PROPERTIES
         PREFIX ""
