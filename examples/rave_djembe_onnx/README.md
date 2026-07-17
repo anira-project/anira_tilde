@@ -6,7 +6,7 @@ Two `anira~` instances replicate the classic nn~ RAVE patch — audio →
 `state_config`; nothing to patch.
 
 Models come from
-[example-models/RaveDjembe](https://github.com/anira-project/example-models/tree/main/RaveDjembe)
+[example-models/RaveDjembe](https://github.com/anira-project/example-models/tree/main/third-party/ircam-acids/RAVE/RaveDjembe)
 (fetched at configure time). 44.1 kHz mono, 2048 samples per latent frame.
 
 ## Patch layout
