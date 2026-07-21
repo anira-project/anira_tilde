@@ -26,21 +26,28 @@ endif()
 add_subdirectory(modules/min-lib)
 
 # ------------------------------------------------------------------------------
-# anira backend selection. anira defaults every backend to ON; we pre-seed
-# LibTorch to OFF because shipping it alongside the external is painful:
+# anira backend selection and linkage. Everything is bundled INSIDE the
+# externals: BUILD_SHARED_LIBS=OFF makes libanira static, and the ONNX
+# Runtime / LiteRT / ExecuTorch backends follow it into the same archive
+# (ExecuTorch is static-only regardless). The shipped package is then just
+# anira~.mxo / mc.anira~.mxe64 with no runtime libraries next to it —
+# shipping shared libs is a pain, especially on Windows.
+#
+# LibTorch is the exception on both counts and is therefore OFF by default:
+#   - it only ships as shared libraries (anira forces shared linkage), so it
+#     can never be bundled inside — enabling it brings the torch dylib/DLL
+#     set (hundreds of MB) back into the package;
 #   - macOS: dyld identifies dylibs by install name, so our libtorch collides
 #     with any other libtorch-based external (e.g. nn~) loaded into the same
 #     Max process. Working around that requires the loader-shim split in
 #     setup-target-anira-tilde.cmake plus extra signing/notarization.
-#   - Windows: the torch DLL set is hundreds of MB next to the external.
 # TorchScript models (.pt/.ts) will NOT load without it. To build with
 # LibTorch anyway, configure with:
 #     cmake -DANIRA_WITH_LIBTORCH=ON ...
-# (or set it in a CMake preset). The ONNX Runtime, LiteRT and ExecuTorch
-# backends remain enabled; ExecuTorch covers torch-family models via
-# ahead-of-time exported .pte files and links statically, so it adds no
-# runtime libraries to ship.
+# (or set it in a CMake preset). ExecuTorch covers torch-family models via
+# ahead-of-time exported .pte files instead.
 # ------------------------------------------------------------------------------
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build anira as a shared library")
 set(ANIRA_WITH_LIBTORCH OFF CACHE BOOL "Build with the LibTorch backend")
 
 add_subdirectory(modules/anira)
