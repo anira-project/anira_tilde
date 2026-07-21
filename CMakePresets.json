@@ -21,6 +21,7 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "ANIRA_TILDE_WITH_TESTS": "ON",
+                "ANIRA_WITH_LIBTORCH": "ON",
                 "C74_LIBRARY_OUTPUT_DIRECTORY": "${sourceDir}/build/desktop/Debug/externals"
             }
         },

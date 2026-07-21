@@ -116,8 +116,11 @@ void Session::prepare(size_t buffer_size, double sample_rate) {
         m_inference_handler.prepare(host_config);
     }
 
+    // CUSTOM is the only backend guaranteed to exist regardless of compile-time
+    // backend selection; a config without model data runs anira's roundtrip
+    // processor anyway.
     m_selected_backend = m_inference_config.m_model_data.empty()
-        ? anira::InferenceBackend::LIBTORCH
+        ? anira::InferenceBackend::CUSTOM
         : m_inference_config.m_model_data.front().m_backend;
     m_inference_handler.set_inference_backend(m_selected_backend);
 

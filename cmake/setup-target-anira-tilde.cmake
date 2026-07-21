@@ -5,7 +5,9 @@
 #
 # The libtorch-collision guard is macOS-specific: it relies on dyld install
 # names, dlopen, mach-o image enumeration and a separately signed .dylib (see
-# Guard.cpp). On macOS we therefore split each object in two:
+# Guard.cpp). It is only needed when the LibTorch backend is compiled in
+# (ANIRA_WITH_LIBTORCH=ON, see setup-dependencies.cmake); on macOS we then
+# split each object in two:
 #
 #   <obj>             -> <obj>.mxo, a libtorch-free loader shim Max loads.
 #   <obj>_impl.dylib  -> the real external (links libtorch via anira), dlopen'd
@@ -16,12 +18,13 @@
 # impl dylib / entry point. anira~.mxo is built by the Min machinery; mc.anira~.mxo
 # is a signed clone of it.
 #
-# On other platforms we build each object directly as its own Min target and let
-# max-posttarget link the audio/jitter libraries.
+# Without LibTorch (the default), and on all other platforms, we build each
+# object directly as its own Min target and let max-posttarget link the
+# audio/jitter libraries.
 
 set(_max_dir ${CMAKE_CURRENT_SOURCE_DIR}/targets/anira_tilde)
 
-if(APPLE)
+if(APPLE AND ANIRA_WITH_LIBTORCH)
     # Audio/Jitter frameworks are normally linked by max-posttarget; the impl
     # dylibs bypass that machinery, so locate them once and link explicitly.
     find_library(MAX_AUDIO_API_LIBRARY "MaxAudioAPI"
@@ -41,6 +44,9 @@ if(APPLE)
         target_include_directories(${target} PRIVATE "${C74_INCLUDES}" ${_max_dir}/src)
         target_link_libraries(${target} PRIVATE
             anira_tilde_core ${MAX_AUDIO_API_LIBRARY} ${MAX_JITTER_API_LIBRARY})
+        # Export the shim entry point (anira_tilde_impl_main) instead of ext_main;
+        # the sources switch on this define.
+        target_compile_definitions(${target} PRIVATE ANIRA_TILDE_LIBTORCH_GUARD)
         anira_tilde_apply_cxx_standard(${target})
 
         # Sits next to the .mxo shims (which min-posttarget drops in
@@ -101,9 +107,10 @@ if(APPLE)
     )
 else()
     # -----------------------------------------------------------------------
-    # Direct externals: no collision guard, so each real Min external ships
-    # directly. max-posttarget links the audio/jitter libraries and produces the
-    # platform external (anira~ from ${PROJECT_NAME}).
+    # Direct externals: no collision guard needed (no LibTorch on macOS, or a
+    # non-Apple platform), so each real Min external ships directly.
+    # max-posttarget links the audio/jitter libraries and produces the platform
+    # external (anira~ from ${PROJECT_NAME}).
     # -----------------------------------------------------------------------
     add_library(${PROJECT_NAME} MODULE
         ${_max_dir}/src/AniraTilde.cpp
@@ -136,19 +143,49 @@ else()
 
     # min-posttarget (via max-posttarget) links the Max import libraries into
     # ${PROJECT_NAME} only. Windows resolves all symbols at link time, so
-    # mc_anira_tilde needs them too (macOS leaves Max symbols undefined for the
-    # host to provide at load time).
+    # mc_anira_tilde needs them too; macOS links the MaxAudioAPI/JitterAPI
+    # stubs the same way max-posttarget did for ${PROJECT_NAME} (other Max
+    # symbols stay undefined for the host to provide at load time).
     if(WIN32)
         target_link_libraries(mc_anira_tilde PRIVATE
             ${MaxAPI_LIB} ${MaxAudio_LIB} ${Jitter_LIB})
     endif()
 
-    get_target_property(_ext_suffix ${PROJECT_NAME} SUFFIX)
     set_target_properties(mc_anira_tilde PROPERTIES
         PREFIX ""
         OUTPUT_NAME "mc.anira~"
-        SUFFIX "${_ext_suffix}"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
     )
+
+    if(APPLE)
+        # The min/max-posttarget bundle machinery is bound to ${PROJECT_NAME},
+        # so replicate it here: .mxo bundle, Info.plist/PkgInfo, audio/jitter
+        # stubs (MSP_LIBRARY/JITTER_LIBRARY were located by max-posttarget) and
+        # an ad-hoc signature so the bundle loads on Apple Silicon.
+        target_link_libraries(mc_anira_tilde PRIVATE
+            ${MSP_LIBRARY} ${JITTER_LIBRARY})
+        # Ninja rejects two bundle targets sharing one MACOSX_BUNDLE_INFO_PLIST
+        # template (the file is emitted twice as a re-configure output), and
+        # ${PROJECT_NAME} already uses the SDK template, so point mc.anira~ at
+        # its own verbatim copy.
+        set(_mc_plist "${CMAKE_CURRENT_BINARY_DIR}/mc_anira_tilde-Info.plist.in")
+        configure_file("${C74_MAX_SDK_DIR}/script/Info.plist.in" "${_mc_plist}" COPYONLY)
+        set_target_properties(mc_anira_tilde PROPERTIES
+            BUNDLE TRUE
+            BUNDLE_EXTENSION "mxo"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${GIT_VERSION_TAG}"
+            MACOSX_BUNDLE_INFO_PLIST "${_mc_plist}"
+        )
+        add_custom_command(TARGET mc_anira_tilde POST_BUILD
+            COMMAND cp "${C74_MAX_SDK_DIR}/script/PkgInfo"
+                "$<TARGET_BUNDLE_DIR:mc_anira_tilde>/Contents/PkgInfo"
+            COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:mc_anira_tilde>"
+            VERBATIM
+            COMMENT "Finalizing mc.anira~.mxo bundle (PkgInfo + ad-hoc signature)"
+        )
+    else()
+        get_target_property(_ext_suffix ${PROJECT_NAME} SUFFIX)
+        set_target_properties(mc_anira_tilde PROPERTIES SUFFIX "${_ext_suffix}")
+    endif()
 endif()
