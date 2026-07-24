@@ -16,6 +16,8 @@ all-zeros state, state_in should equal N.
 import os
 import torch
 
+from export_util import export_all
+
 
 class StateAccumulator(torch.nn.Module):
     def forward(
@@ -26,16 +28,10 @@ class StateAccumulator(torch.nn.Module):
 
 def main() -> None:
     model = StateAccumulator()
-    model.eval()
-
     audio_in = torch.zeros(1, 1, 128)
     state_in = torch.zeros(1, 4)
 
-    traced = torch.jit.trace(model, (audio_in, state_in))
-
-    out_path = os.path.join(os.path.dirname(__file__), "state_accumulator.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (audio_in, state_in), "state_accumulator")
 
 
 if __name__ == "__main__":

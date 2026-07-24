@@ -24,6 +24,8 @@ import math
 import os
 import torch
 
+from export_util import export_all
+
 SIGNAL_SIZE = 512
 SAMPLE_RATE = 44100.0
 
@@ -44,16 +46,10 @@ class SineOscillator(torch.nn.Module):
 
 def main() -> None:
     model = SineOscillator()
-    model.eval()
-
     freq     = torch.full((1, 1, SIGNAL_SIZE), 440.0)
     phase_in = torch.zeros(1, 1)
 
-    traced = torch.jit.trace(model, (freq, phase_in))
-
-    out_path = os.path.join(os.path.dirname(__file__), "sine_oscillator.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (freq, phase_in), "sine_oscillator")
 
 
 if __name__ == "__main__":

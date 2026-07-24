@@ -22,6 +22,8 @@ state value and increases by 1 each inference.
 import os
 import torch
 
+from export_util import export_all
+
 
 class UpsampleWithState(torch.nn.Module):
     def forward(
@@ -34,16 +36,10 @@ class UpsampleWithState(torch.nn.Module):
 
 def main() -> None:
     model = UpsampleWithState()
-    model.eval()
-
     latent = torch.zeros(1, 1, 1)
     state  = torch.zeros(1, 4)
 
-    traced = torch.jit.trace(model, (latent, state))
-
-    out_path = os.path.join(os.path.dirname(__file__), "upsample_state.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (latent, state), "upsample_state")
 
 
 if __name__ == "__main__":

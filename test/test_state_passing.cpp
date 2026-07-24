@@ -2,35 +2,32 @@
 #include <thread>
 #include <chrono>
 #include <anira/anira.h>
+#include "TestBackends.h"
 #include "anira_tilde/state_passing/StatePassingPrePostProcessor.h"
 
 using namespace anira_tilde;
+using anira_tilde_test::Backend;
 
-#ifndef STATE_TEST_MODEL_PATH
-#error "STATE_TEST_MODEL_PATH must be defined via CMake"
-#endif
-#ifndef SINE_OSC_MODEL_PATH
-#error "SINE_OSC_MODEL_PATH must be defined via CMake"
-#endif
-
-#ifdef USE_LIBTORCH
+// Runs once per compiled-in backend (see TestBackends.h); LibTorch coverage
+// exists only when the build enables ANIRA_WITH_LIBTORCH.
+class StatePassing : public testing::TestWithParam<Backend> {};
 
 static constexpr size_t kSignalSize  = 128;
 static constexpr size_t kStateSize   = 4;
 static constexpr int    kTimeoutSecs = 5;
 
-static anira::InferenceConfig make_config() {
+static anira::InferenceConfig make_config(const Backend& b) {
     std::vector<anira::ModelData> model_data = {
-        {std::string(STATE_TEST_MODEL_PATH), anira::InferenceBackend::LIBTORCH},
+        {anira_tilde_test::model_path("state_accumulator", b), b.backend},
     };
 
+    // Universal shape (no backend tag): valid for whichever backend runs.
     std::vector<anira::TensorShape> tensor_shapes = {
         {
             {{1, 1, static_cast<int64_t>(kSignalSize)},
              {1,    static_cast<int64_t>(kStateSize)}},
             {{1, 1, static_cast<int64_t>(kSignalSize)},
              {1,    static_cast<int64_t>(kStateSize)}},
-            anira::InferenceBackend::LIBTORCH,
         },
     };
 
@@ -55,8 +52,8 @@ static void wait_for_inference(anira::InferenceHandler& handler, size_t prev) {
     }
 }
 
-TEST(StatePassing, StateIsFedBackBetweenInferences) {
-    auto config = make_config();
+TEST_P(StatePassing, StateIsFedBackBetweenInferences) {
+    auto config = make_config(GetParam());
     std::vector<StatePair> state_pairs = {{1, 1}};
     StatePassingPrePostProcessor pp(config, state_pairs);
 
@@ -66,7 +63,7 @@ TEST(StatePassing, StateIsFedBackBetweenInferences) {
 
     anira::InferenceHandler handler(pp, config);
     handler.prepare({static_cast<float>(kSignalSize), 44100.0f});
-    handler.set_inference_backend(anira::InferenceBackend::LIBTORCH);
+    handler.set_inference_backend(GetParam().backend);
 
     std::vector<float> audio(kSignalSize, 0.0f);
     float* ch[1] = {audio.data()};
@@ -99,9 +96,9 @@ TEST(StatePassing, StateIsFedBackBetweenInferences) {
 static constexpr size_t kSineSignalSize  = 512;
 static constexpr float  kSampleRate      = 44100.0f;
 
-static anira::InferenceConfig make_sine_config() {
+static anira::InferenceConfig make_sine_config(const Backend& b) {
     std::vector<anira::ModelData> model_data = {
-        {std::string(SINE_OSC_MODEL_PATH), anira::InferenceBackend::LIBTORCH},
+        {anira_tilde_test::model_path("sine_oscillator", b), b.backend},
     };
 
     std::vector<anira::TensorShape> tensor_shapes = {
@@ -110,7 +107,6 @@ static anira::InferenceConfig make_sine_config() {
             {{1, 1, static_cast<int64_t>(kSineSignalSize)}, {1, 1}},
             // outputs: audio [1,1,512], phase [1,1]
             {{1, 1, static_cast<int64_t>(kSineSignalSize)}, {1, 1}},
-            anira::InferenceBackend::LIBTORCH,
         },
     };
 
@@ -124,15 +120,15 @@ static anira::InferenceConfig make_sine_config() {
     return {model_data, tensor_shapes, proc_spec, 10.0f};
 }
 
-TEST(StatePassing, SineOscillatorPhaseAccumulates) {
-    auto config = make_sine_config();
+TEST_P(StatePassing, SineOscillatorPhaseAccumulates) {
+    auto config = make_sine_config(GetParam());
     // output_tensor=1 (phase out) feeds back into input_tensor=1 (phase in)
     std::vector<StatePair> state_pairs = {{1, 1}};
     StatePassingPrePostProcessor pp(config, state_pairs);
 
     anira::InferenceHandler handler(pp, config);
     handler.prepare({static_cast<float>(kSineSignalSize), kSampleRate});
-    handler.set_inference_backend(anira::InferenceBackend::LIBTORCH);
+    handler.set_inference_backend(GetParam().backend);
 
     const float freq = 440.0f;
     std::vector<float> freq_buf(kSineSignalSize, freq);
@@ -166,14 +162,14 @@ TEST(StatePassing, SineOscillatorPhaseAccumulates) {
         << "phase wrong after 2nd inference — state may not have been passed";
 }
 
-TEST(StatePassing, SineOscillatorContinuousAcrossBlockBoundaries) {
-    auto config = make_sine_config();
+TEST_P(StatePassing, SineOscillatorContinuousAcrossBlockBoundaries) {
+    auto config = make_sine_config(GetParam());
     std::vector<StatePair> state_pairs = {{1, 1}};
     StatePassingPrePostProcessor pp(config, state_pairs);
 
     anira::InferenceHandler handler(pp, config);
     handler.prepare({static_cast<float>(kSineSignalSize), kSampleRate});
-    handler.set_inference_backend(anira::InferenceBackend::LIBTORCH);
+    handler.set_inference_backend(GetParam().backend);
 
     const float freq = 440.0f;
     // For a continuous sine, |sample[i] - sample[i-1]| <= 2*pi*f/sr.
@@ -214,11 +210,6 @@ TEST(StatePassing, SineOscillatorContinuousAcrossBlockBoundaries) {
         check(block2[i-1], block2[i], kSineSignalSize + i);
 }
 
-
-#else  // !USE_LIBTORCH
-
-TEST(StatePassing, SkippedWithoutLibTorch) {
-    GTEST_SKIP() << "LibTorch not available – state-passing integration test skipped";
-}
-
-#endif  // USE_LIBTORCH
+INSTANTIATE_TEST_SUITE_P(Backends, StatePassing,
+                         testing::ValuesIn(anira_tilde_test::backends()),
+                         anira_tilde_test::param_name);

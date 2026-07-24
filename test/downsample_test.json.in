@@ -2,8 +2,8 @@
   "inference_config": {
     "model_data": [
       {
-        "model_path": "@MODELS_DIR@/downsampler_x32.pt",
-        "inference_backend": "LIBTORCH"
+        "model_path": "@MODELS_DIR@/downsampler_x32.@TEST_MODEL_EXT@",
+        "inference_backend": "@TEST_BACKEND@"
       }
     ],
     "tensor_shape": [

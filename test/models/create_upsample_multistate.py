@@ -22,6 +22,8 @@ that the single-state-tensor model avoids by accident.
 import os
 import torch
 
+from export_util import export_all
+
 
 class UpsampleWithMultiState(torch.nn.Module):
     def forward(
@@ -36,17 +38,11 @@ class UpsampleWithMultiState(torch.nn.Module):
 
 def main() -> None:
     model = UpsampleWithMultiState()
-    model.eval()
-
     latent = torch.zeros(1, 1, 1)
     state1 = torch.zeros(1, 4)
     state2 = torch.zeros(1, 4)
 
-    traced = torch.jit.trace(model, (latent, state1, state2))
-
-    out_path = os.path.join(os.path.dirname(__file__), "upsample_multistate.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (latent, state1, state2), "upsample_multistate")
 
 
 if __name__ == "__main__":
