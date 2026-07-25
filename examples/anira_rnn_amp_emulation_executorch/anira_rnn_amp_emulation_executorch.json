@@ -1,7 +1,7 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "path/to/stateful-lstm-executorch.pte", "inference_backend": "EXECUTORCH" }
+            { "model_path": "stateful-lstm-executorch.pte", "inference_backend": "EXECUTORCH" }
         ],
         "tensor_shape": [
             {

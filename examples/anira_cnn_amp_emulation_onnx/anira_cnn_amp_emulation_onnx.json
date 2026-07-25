@@ -1,7 +1,7 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "path/to/steerable-nafx-libtorch-dynamic.onnx", "inference_backend": "ONNX" }
+            { "model_path": "steerable-nafx-libtorch-dynamic.onnx", "inference_backend": "ONNX" }
         ],
         "tensor_shape": [
             {

@@ -31,6 +31,10 @@ anira_tilde_apply_sanitizers()
 
 include(setup-dependencies)
 
+# Example models: downloaded next to their JSON configs so the examples work
+# without any path editing. -DANIRA_TILDE_DOWNLOAD_EXAMPLE_MODELS=OFF to skip.
+include(setup-example-models)
+
 # ==============================================================================
 # Targets
 #   - anira_tilde_core : pure C++ library, no Max dependency

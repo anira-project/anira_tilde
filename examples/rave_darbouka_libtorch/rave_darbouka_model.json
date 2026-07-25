@@ -1,7 +1,7 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "path/to/darbouka_onnx.ts", "inference_backend": "LIBTORCH" }
+            { "model_path": "darbouka_onnx.ts", "inference_backend": "LIBTORCH" }
         ],
         "tensor_shape": [
             {
