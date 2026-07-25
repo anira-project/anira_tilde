@@ -1,0 +1,63 @@
+{
+    "inference_config": {
+        "model_data": [
+            {
+                "model_path": "rave_encoder.onnx",
+                "inference_backend": "ONNX"
+            }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [
+                    [
+                        1,
+                        1,
+                        2048
+                    ],
+                    [
+                        1,
+                        5888
+                    ]
+                ],
+                "output_shape": [
+                    [
+                        1,
+                        4,
+                        1
+                    ],
+                    [
+                        1,
+                        5888
+                    ]
+                ]
+            }
+        ],
+        "processing_spec": {
+            "preprocess_input_channels": [
+                1,
+                1
+            ],
+            "postprocess_output_channels": [
+                4,
+                1
+            ],
+            "preprocess_input_size": [
+                2048,
+                0
+            ],
+            "postprocess_output_size": [
+                1,
+                0
+            ]
+        },
+        "max_inference_time": 63.1
+    },
+    "state_config": {
+        "state_pairs": [
+            {
+                "output_tensor": 1,
+                "input_tensor": 1
+            }
+        ]
+    }
+}

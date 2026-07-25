@@ -24,6 +24,10 @@ set(_anira_tilde_example_models
     "anira_rnn_amp_emulation_executorch|stateful-lstm-executorch.pte|https://github.com/vackva/stateful-lstm/raw/refs/heads/main/models/model_0/stateful-lstm-executorch.pte"
     "rave_djembe|rave_forward.onnx|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_forward.onnx"
     "rave_djembe|rave_forward.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_forward.pte"
+    "rave_djembe|rave_encoder.onnx|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_encoder.onnx"
+    "rave_djembe|rave_encoder.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_encoder.pte"
+    "rave_djembe|rave_decoder.onnx|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_decoder.onnx"
+    "rave_djembe|rave_decoder.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_decoder.pte"
 )
 
 # TorchScript models load only in LibTorch-enabled builds; don't pull the
