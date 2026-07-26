@@ -12,7 +12,7 @@
                     [
                         1,
                         1,
-                        128
+                        1024
                     ],
                     [
                         1,
@@ -23,7 +23,7 @@
                     [
                         1,
                         2,
-                        1
+                        8
                     ],
                     [
                         1,
@@ -42,15 +42,15 @@
                 1
             ],
             "preprocess_input_size": [
-                128,
+                1024,
                 0
             ],
             "postprocess_output_size": [
-                1,
+                8,
                 0
             ]
         },
-        "max_inference_time": 6.0
+        "max_inference_time": 16.0
     },
     "state_config": {
         "state_pairs": [

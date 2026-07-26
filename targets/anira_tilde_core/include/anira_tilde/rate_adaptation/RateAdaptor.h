@@ -27,13 +27,21 @@ namespace anira_tilde {
  *                  we gather one input block at every output_size boundary
  *                  crossed (0, 1, or many, depending on how the host block
  *                  compares to the output block) and feed them all to anira.
+ *                  Each of the input_size samples in a block represents
+ *                  output_size/input_size samples of host time (e.g. 8
+ *                  latent frames per 1024-sample block = one frame per 128
+ *                  samples), so the gather picks samples at that stride —
+ *                  not consecutively — from the boundary onward.
  *   - Downsample — model input block is larger than the model output block
  *                  (input_size > output_size). We hand anira every host
  *                  input sample (it accumulates; one inference completes per
  *                  input_size samples) and pop one output block per
- *                  input_size boundary crossed in this host block; each
- *                  popped value is sample-and-held across its boundary
- *                  segment of the host output.
+ *                  input_size boundary crossed in this host block. Each of
+ *                  the output_size samples in a popped block represents
+ *                  input_size/output_size samples of host time, so it is
+ *                  sample-and-held across its own sub-segment (a phase
+ *                  counter carries partially-played blocks across host
+ *                  callbacks).
  */
 class ANIRA_TILDE_API RateAdaptor {
 public:
@@ -70,11 +78,12 @@ private:
     /// State for a single signal tensor pair. Only the slot matching `kind`
     /// is actually used; the others stay default-constructed (zero cost).
     struct PerTensor {
-        Kind                 kind      = Kind::Equal;
-        size_t               pos       = 0;        // running host-sample counter
-        size_t               max_fires = 0;        // scratch capacity, in inferences
+        Kind                 kind       = Kind::Equal;
+        size_t               pos        = 0;       // running host-sample counter
+        size_t               max_fires  = 0;       // scratch capacity, in inferences
+        size_t               hold_phase = 0;       // host samples since the held block's boundary
         std::vector<std::vector<float>> upsample_gather;  // per-channel gathered input blocks
-        anira::Buffer<float> downsample_hold;      // last seen output (Downsample)
+        anira::Buffer<float> downsample_hold;      // currently-playing output block (Downsample)
         anira::Buffer<float> downsample_pop;       // pop scratch anira writes into (Downsample)
         std::vector<size_t>  downsample_offsets;   // boundary offsets of this block's pops
     };
