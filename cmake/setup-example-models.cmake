@@ -35,14 +35,6 @@ set(_anira_tilde_example_models
     "anira_rnn_amp_emulation_onnx|stateful-lstm-libtorch.onnx|https://github.com/vackva/stateful-lstm/raw/refs/heads/main/models/model_0/stateful-lstm-libtorch.onnx"
 )
 
-# TorchScript models load only in LibTorch-enabled builds; don't pull the
-# (large) downloads into the default configuration.
-if(ANIRA_WITH_LIBTORCH)
-    list(APPEND _anira_tilde_example_models
-        "rave_darbouka_libtorch|darbouka_onnx.ts|https://play.forum.ircam.fr/rave-vst-api/get_model/darbouka_onnx"
-    )
-endif()
-
 set(_failed "")
 foreach(_entry IN LISTS _anira_tilde_example_models)
     string(REPLACE "|" ";" _parts "${_entry}")
