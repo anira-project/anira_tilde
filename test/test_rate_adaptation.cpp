@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <thread>
 #include <chrono>
 #include "TestBackends.h"
@@ -15,6 +16,7 @@ class RateAdaptation : public testing::TestWithParam<Backend> {};
 // Host buffer size used throughout these tests.  output_size=32 is a multiple
 // so inference boundaries always fall on callback boundaries (clean timing).
 static constexpr size_t kRABuffer     = 16;
+static constexpr size_t kRAOutputSize = 32;  // upsampler_x32 model output block
 static constexpr float  kRASampleRate = 44100.0f;
 static constexpr auto   kRACallbackMs = std::chrono::milliseconds(50);
 
@@ -126,6 +128,64 @@ TEST_P(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
         EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i << " should return to zero";
 }
 
+// Host buffer LARGER than the model output block (64 = 2×32): two inferences
+// must fire per callback, one per output-block boundary. This is the RAVE
+// decoder regime (host 2048, output block 128) — a single-fire adaptor
+// starves anira and the output collapses to silence.
+TEST_P(RateAdaptation, UpsampleFiresOncePerOutputBlockBoundary) {
+    constexpr size_t kBig = 2 * kRAOutputSize;  // 64 = two output blocks
+    anira_tilde::Session proc(anira_tilde_test::json_path("rate_adapt_test", GetParam()));
+    proc.prepare(kBig, kRASampleRate);
+
+    // Boundaries fall at offsets 0 and 32 of every callback, so inferences
+    // alternate between in_buf[0]=1 and in_buf[32]=33 (never 0 — a zero in
+    // the steady-state output would mean a starved/underrun ring instead).
+    std::vector<float> in_buf(kBig);
+    for (size_t i = 0; i < kBig; ++i)
+        in_buf[i] = static_cast<float>(i + 1);
+    std::vector<float> out_buf(kBig, 0.0f);
+
+    const float*        in_ch[1]    = { in_buf.data() };
+    float*              out_ch[1]   = { out_buf.data() };
+    const float* const* in_ptrs[1]  = { in_ch };
+    float* const*       out_ptrs[1] = { out_ch };
+    size_t in_sizes[1]  = { kBig };
+    size_t out_sizes[1] = { kBig };
+
+    auto run_callback = [&]() {
+        out_buf.assign(kBig, 0.0f);
+        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
+        std::this_thread::sleep_for(kRACallbackMs);
+    };
+
+    int warmup = static_cast<int>(proc.get_latency_samples() / kBig) + kRAExtraWarmupCallbacks;
+    for (int i = 0; i < warmup; ++i)
+        run_callback();
+
+    // Collect four callbacks of steady-state output.
+    std::vector<float> collected;
+    for (int cb = 0; cb < 4; ++cb) {
+        run_callback();
+        collected.insert(collected.end(), out_buf.begin(), out_buf.end());
+    }
+
+    // Both boundary values must appear, in equal amounts, in runs of exactly
+    // one output block (32 samples) — phase depends on latency, structure not.
+    size_t ones = 0;
+    for (size_t i = 0; i < collected.size(); ++i) {
+        ASSERT_TRUE(collected[i] == 1.0f || collected[i] == 33.0f)
+            << "sample " << i << " = " << collected[i];
+        if (collected[i] == 1.0f) ++ones;
+    }
+    EXPECT_EQ(ones, collected.size() / 2);
+    for (size_t i = 1; i < collected.size(); ++i) {
+        if (collected[i] == collected[i - 1]) continue;
+        for (size_t j = i; j < std::min(i + kRAOutputSize, collected.size()); ++j)
+            EXPECT_EQ(collected[j], collected[i]) << "run broken at sample " << j;
+        i += kRAOutputSize - 1;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Downsampler: input_size=32, output_size=1 (N=32)
 // Model: mean of 32 input samples → 1 output sample.
@@ -211,6 +271,65 @@ TEST_P(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
     // out_buf should contain the 2.0 inference result (sample-and-hold).
     for (size_t i = 0; i < kRABuffer; ++i)
         EXPECT_FLOAT_EQ(out_buf[i], 2.0f) << "sample " << i;
+}
+
+// Host buffer LARGER than the model input block (64 = 2×32): two inferences
+// complete per callback and BOTH results must reach the output, each held
+// across its own 32-sample boundary segment. This is the RAVE encoder regime
+// (host 2048, input block 128) — a single-pop adaptor drops 15 of every 16
+// latents through ring overflow and holds one stale value across the block.
+TEST_P(RateAdaptation, DownsamplePopsOncePerInputBlockBoundary) {
+    constexpr size_t kBig     = 64;  // two input blocks of the mean model
+    constexpr size_t kInBlock = 32;
+    anira_tilde::Session proc(anira_tilde_test::json_path("downsample_test", GetParam()));
+    proc.prepare(kBig, kRASampleRate);
+
+    // First input block all 1.0, second all 3.0 → the mean model pops
+    // alternating 1.0 / 3.0, one value per 32-sample segment.
+    std::vector<float> in_buf(kBig);
+    for (size_t i = 0; i < kBig; ++i)
+        in_buf[i] = i < kInBlock ? 1.0f : 3.0f;
+    std::vector<float> out_buf(kBig, 0.0f);
+
+    const float*        in_ch[1]    = { in_buf.data() };
+    float*              out_ch[1]   = { out_buf.data() };
+    const float* const* in_ptrs[1]  = { in_ch };
+    float* const*       out_ptrs[1] = { out_ch };
+    size_t in_sizes[1]  = { kBig };
+    size_t out_sizes[1] = { kBig };
+
+    auto run_callback = [&]() {
+        out_buf.assign(kBig, 0.0f);
+        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
+        std::this_thread::sleep_for(kRACallbackMs);
+    };
+
+    // The reported latency counts samples of the OUTPUT tensor's stream,
+    // which runs at 1/kInBlock of the host rate here.
+    int warmup = static_cast<int>(proc.get_latency_samples() * kInBlock / kBig) +
+                 kRAExtraWarmupCallbacks;
+    for (int i = 0; i < warmup; ++i)
+        run_callback();
+
+    std::vector<float> collected;
+    for (int cb = 0; cb < 4; ++cb) {
+        run_callback();
+        collected.insert(collected.end(), out_buf.begin(), out_buf.end());
+    }
+
+    size_t ones = 0;
+    for (size_t i = 0; i < collected.size(); ++i) {
+        ASSERT_TRUE(collected[i] == 1.0f || collected[i] == 3.0f)
+            << "sample " << i << " = " << collected[i];
+        if (collected[i] == 1.0f) ++ones;
+    }
+    EXPECT_EQ(ones, collected.size() / 2);
+    for (size_t i = 1; i < collected.size(); ++i) {
+        if (collected[i] == collected[i - 1]) continue;
+        for (size_t j = i; j < std::min(i + kInBlock, collected.size()); ++j)
+            EXPECT_EQ(collected[j], collected[i]) << "run broken at sample " << j;
+        i += kInBlock - 1;
+    }
 }
 
 // ---------------------------------------------------------------------------

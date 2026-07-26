@@ -129,13 +129,21 @@ void Session::prepare(size_t buffer_size, double sample_rate, size_t max_host_bl
         ? m_resampler_config.model_sample_rate
         : sample_rate;
 
+    // Largest per-call sample count process() will see, in the model domain.
+    // buffer_size (the inference-pacing block) can be far smaller — 1 for a
+    // decoder — so ring margins and scratch must be sized from this instead.
+    const size_t model_max_block = m_resampling
+        ? static_cast<size_t>(std::ceil(static_cast<double>(max_host_block) *
+                                        m_model_per_host)) + 16
+        : max_host_block;
+
     anira::HostConfig host_config {
         static_cast<float>(model_buffer),
         static_cast<float>(pipeline_rate),
         /*allow_smaller_buffers=*/m_resampling,
     };
 
-    if (const auto dl = compute_decoder_latency(m_layout, model_buffer)) {
+    if (const auto dl = compute_decoder_latency(m_layout, model_max_block)) {
         m_inference_handler.prepare(host_config, dl->samples, dl->tensor_index);
     } else {
         m_inference_handler.prepare(host_config);
@@ -149,15 +157,10 @@ void Session::prepare(size_t buffer_size, double sample_rate, size_t max_host_bl
         : m_inference_config.m_model_data.front().m_backend;
     m_inference_handler.set_inference_backend(m_selected_backend);
 
-    m_rate_adaptor.prepare(m_layout, model_buffer);
+    m_rate_adaptor.prepare(m_layout, model_max_block);
 
     if (m_resampling) {
-        // process() receives up to max_host_block samples per streamable
-        // tensor per call (NOT buffer_size, which is the inference-pacing
-        // block — 1 for a decoder); size every conversion buffer for that.
-        const size_t scratch_cap =
-            static_cast<size_t>(std::ceil(static_cast<double>(max_host_block) *
-                                          m_model_per_host)) + 16;
+        const size_t scratch_cap = model_max_block;
         const size_t n_in  = m_layout.input_block_sizes.size();
         const size_t n_out = m_layout.output_block_sizes.size();
 
