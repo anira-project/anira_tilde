@@ -24,7 +24,14 @@ inline size_t compute_effective_buffer_size(
 
         size_t current = host_buffer_size;
         if (input_sizes[i] < output_sizes[i]) {
-            current = input_sizes[i];
+            // Upsample tensor: the RateAdaptor feeds one input block per
+            // output-block boundary, so per host block this tensor's stream
+            // advances by ceil(host / output) input blocks — that count is
+            // what anira's HostConfig buffer size (in reference-tensor
+            // samples per callback) must reflect.
+            const size_t inferences_per_block =
+                (host_buffer_size + output_sizes[i] - 1) / output_sizes[i];
+            current = inferences_per_block * input_sizes[i];
         }
         if (current > effective) effective = current;
     }
