@@ -56,6 +56,14 @@ cmake --build --preset desktop-debug
 ctest --preset desktop-debug
 ```
 
+## Build options
+
+| Option | Default | Effect |
+|---|---|---|
+| `ANIRA_WITH_LIBTORCH` | `OFF` | Adds the LibTorch backend. Unlike the always-on backends (ONNX Runtime, LiteRT, ExecuTorch — statically bundled inside the external), LibTorch is a large shared library that must ship next to the external; it stays opt-in because distributing it on macOS/Windows is painful. |
+| `ANIRA_TILDE_DOWNLOAD_EXAMPLE_MODELS` | `ON` | Downloads every example model next to its JSON config at configure time (versioned — stale models from an older manifest are re-fetched). Turn off for offline builds; everything except the examples works without them. |
+| `ANIRA_TILDE_WITH_TESTS` | `OFF` | Builds the test suite (on in the debug/sanitizer presets). |
+
 ## Tests
 
 Disabled by default. Enable with the `ANIRA_TILDE_WITH_TESTS` option (already
