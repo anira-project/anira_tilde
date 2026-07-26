@@ -15,8 +15,12 @@ function(anira_tilde_copy_windows_runtime_dlls target)
             COMMAND_EXPAND_LISTS
         )
     endif()
+    # TARGET_RUNTIME_DLLS is empty in the all-static default build, which
+    # would leave copy_if_different with only the destination argument (an
+    # error) — run the no-op `cmake -E true` instead in that case.
     add_custom_command(TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        COMMAND ${CMAKE_COMMAND} -E
+            $<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${target}>>,copy_if_different,true>
             $<TARGET_RUNTIME_DLLS:${target}>
             $<TARGET_FILE_DIR:${target}>
         COMMAND_EXPAND_LISTS
