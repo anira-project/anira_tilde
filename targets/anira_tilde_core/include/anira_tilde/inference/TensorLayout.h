@@ -56,10 +56,6 @@ struct TensorLayout {
 
     bool is_state_input (size_t tensor_index) const { return is_state_tensor(state_pairs, tensor_index, true); }
     bool is_state_output(size_t tensor_index) const { return is_state_tensor(state_pairs, tensor_index, false); }
-
-    /// Dry/wet mixing is only meaningful when every signal in/out tensor
-    /// pair has matching rate AND matching channel count.
-    bool mixing_makes_sense() const;
 };
 
 } // namespace anira_tilde

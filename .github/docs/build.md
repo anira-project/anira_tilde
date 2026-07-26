@@ -117,8 +117,6 @@ include/anira_tilde/
 ├── inference/
 │   ├── Session.h                anira pipeline + state passing wrapper
 │   └── TensorLayout.h           per-model channel/size metadata + lookups
-├── mixing/
-│   └── Mixer.h                  dry/wet mixer with latency-aligned delay
 ├── rate_adaptation/
 │   ├── EffectiveBufferSize.h    derive the right block size for prepare()
 │   └── RateAdaptor.h            up/downsample views around anira's I/O

@@ -35,20 +35,15 @@ size_t Engine::latency_samples() const {
 
 void Engine::prepare(size_t host_buffer_size, double host_sample_rate) {
     m_host_buffer_size = host_buffer_size;
-    float latency = 0.f;
 
     if (m_session) {
         const TensorLayout& layout = m_session->layout();
         const size_t effective_buffer_size = compute_effective_buffer_size(
             layout.input_block_sizes, layout.output_block_sizes, host_buffer_size);
         m_session->prepare(effective_buffer_size, host_sample_rate, host_buffer_size);
-        latency = static_cast<float>(m_session->get_latency_samples());
         prepare_audio_buffers();
     }
 
-    m_mixer.prepare(host_sample_rate, host_buffer_size,
-                    m_session ? m_session->layout().total_signal_outputs() : 0,
-                    static_cast<size_t>(latency));
     m_ready.store(true, std::memory_order_release);
 }
 
@@ -62,8 +57,7 @@ void Engine::prepare_audio_buffers() {
     m_input_sample_counts.clear();
     m_output_sample_counts.clear();
 
-    m_mixing_disabled = !layout.mixing_makes_sense();
-    if (m_mixing_disabled) m_mixer.set_mix(1.0f);
+    m_last_wet.assign(layout.total_signal_outputs(), 0.0f);
 
     // One anira::BufferF per input tensor.
     m_input_buffers.reserve(layout.sig_input_channels.size());
@@ -109,31 +103,36 @@ void Engine::process(const float* const* input,  size_t num_input_channels,
         process_anira();
     }
 
-    write_mixed_output(input, num_input_channels, output, num_output_channels,
-                       sample_count, ready, layout);
+    write_output(input, num_input_channels, output, num_output_channels,
+                 sample_count, ready, layout);
 }
 
-void Engine::write_mixed_output(const float* const* input,  size_t num_input_channels,
-                                float* const*       output, size_t num_output_channels,
-                                size_t sample_count, bool ready,
-                                const TensorLayout& layout) {
+void Engine::write_output(const float* const* input,  size_t num_input_channels,
+                          float* const*       output, size_t num_output_channels,
+                          size_t sample_count, bool ready,
+                          const TensorLayout& layout) {
     const size_t copy_out = std::min(num_output_channels, layout.total_signal_outputs());
     for (size_t channel = 0; channel < copy_out; ++channel) {
-        const size_t tensor_idx        = layout.output_channel_to_tensor[channel];
-        const size_t in_tensor_channel = layout.output_channel_in_tensor[channel];
-        const size_t samples_retrieved = m_output_sample_counts[tensor_idx];
-        const size_t dry_channel       = (channel < num_input_channels) ? channel : 0;
-        const float* wet_ptr = m_output_buffers[tensor_idx].get_read_pointer(in_tensor_channel);
-
-        if (ready) {
-            m_mixer.process_channel_block(input[dry_channel],
-                                          wet_ptr, samples_retrieved,
-                                          output[channel],
-                                          sample_count, channel);
-        } else {
+        if (!ready) {
             for (size_t s = 0; s < sample_count; ++s)
                 output[channel][s] = (channel < num_input_channels) ? input[channel][s] : 0.0f;
+            continue;
         }
+
+        const size_t tensor_idx        = layout.output_channel_to_tensor[channel];
+        const size_t in_tensor_channel = layout.output_channel_in_tensor[channel];
+        const size_t wet_period        = m_output_sample_counts[tensor_idx];
+        const float* wet_ptr = m_output_buffers[tensor_idx].get_read_pointer(in_tensor_channel);
+
+        // Write the wet (model) signal straight to the output. Rate-adapted
+        // models may return fewer samples than the block (wet_period samples,
+        // repeated across the block); when they return none, hold the last
+        // valid wet sample for this channel.
+        for (size_t s = 0; s < sample_count; ++s)
+            output[channel][s] = (wet_period > 0) ? wet_ptr[s % wet_period]
+                                                  : m_last_wet[channel];
+        if (wet_period > 0)
+            m_last_wet[channel] = wet_ptr[wet_period - 1];
     }
 }
 
@@ -145,10 +144,6 @@ void Engine::set_message_input(size_t tensor_index, const std::vector<float>& va
 
 float Engine::get_message_output(size_t tensor_index, size_t channel) {
     return m_session ? m_session->get_output(tensor_index, channel) : 0.0f;
-}
-
-void Engine::set_dry_wet_mix(float mix01) {
-    m_mixer.set_mix(mix01);
 }
 
 } // namespace anira_tilde

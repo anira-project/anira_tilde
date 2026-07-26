@@ -9,9 +9,10 @@ Behaviour:
     4 channels, block size 1 — no rate adaptation).
 
 This reproduces the encode-style RAVE shape (one output tensor carrying many
-channels, e.g. [1, 16, 1] latents) that crashed the dry/wet Mixer: the Mixer's
-per-channel state was sized to the number of output *tensors* (1) but indexed
-by the number of output *channels* (4), so channels >= 1 wrote out of bounds.
+channels, e.g. [1, 16, 1] latents) that once crashed the Engine's per-channel
+output path (then the dry/wet Mixer): per-channel state was sized to the
+number of output *tensors* (1) but indexed by the number of output *channels*
+(4), so channels >= 1 wrote out of bounds.
 """
 
 import os
