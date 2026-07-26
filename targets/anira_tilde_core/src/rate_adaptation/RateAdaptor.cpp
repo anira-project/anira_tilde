@@ -39,12 +39,14 @@ void RateAdaptor::prepare(const TensorLayout& layout, size_t max_block_size) {
             const size_t max_fires =
                 max_block_size / layout.input_block_sizes[i] + 1;
             m_tensors[i].max_fires = max_fires;
-            m_tensors[i].downsample_hold.resize(layout.sig_output_channels[i], 1);
+            m_tensors[i].downsample_hold.resize(layout.sig_output_channels[i],
+                                                layout.output_block_sizes[i]);
             m_tensors[i].downsample_pop .resize(layout.sig_output_channels[i],
                                                 max_fires * layout.output_block_sizes[i]);
             m_tensors[i].downsample_hold.clear();
             m_tensors[i].downsample_pop .clear();
             m_tensors[i].downsample_offsets.reserve(max_fires);
+            m_tensors[i].hold_phase = 0;
         }
         if (m_tensors[i].kind != Kind::Equal) m_active = true;
     }
@@ -98,8 +100,12 @@ RateAdaptor::AniraView RateAdaptor::pre_dispatch(const TensorLayout& layout,
                 const size_t offset = boundary - start;
                 for (size_t c = 0; c < num_ch; ++c) {
                     float* dst = t.upsample_gather[c].data() + fires * in_block;
+                    // Sample j of the block represents host time
+                    // j*out_block/in_block after the boundary — pick at that
+                    // stride so a multi-frame block gets distinct frames.
                     for (size_t j = 0; j < in_block; ++j)
-                        dst[j] = input_data[i][c][std::min(offset + j, host_samples - 1)];
+                        dst[j] = input_data[i][c][std::min(
+                            offset + (j * out_block) / in_block, host_samples - 1)];
                 }
                 ++fires;
             }
@@ -167,25 +173,32 @@ void RateAdaptor::post_dispatch(const TensorLayout& layout,
         const size_t host_samples = num_output_samples[i];
         const size_t num_ch       = layout.sig_output_channels[i];
         const size_t out_block    = layout.output_block_sizes[i];
+        const size_t in_block     = layout.input_block_sizes[i];
         // anira's pop_data rewrites the requested count in place: 0 means the
         // receive ring couldn't cover the request and our scratch holds
-        // zero-fill, not results — keep the previous held value then.
+        // zero-fill, not results — keep playing the previous block then.
         const size_t fires        = m_out_view_sample_counts[i] == 0
             ? 0
             : t.downsample_offsets.size();
-        for (size_t c = 0; c < num_ch; ++c) {
-            size_t fire = 0;
-            float  held = t.downsample_hold.get_sample(c, 0);
-            for (size_t s = 0; s < host_samples; ++s) {
-                // Advance to the pop whose boundary this sample has reached;
-                // each pop's first sample becomes the new held value.
-                while (fire < fires && s >= t.downsample_offsets[fire]) {
-                    held = t.downsample_pop.get_sample(c, fire * out_block);
-                    ++fire;
-                }
-                output_data[i][c][s] = held;
+        size_t fire = 0;
+        for (size_t s = 0; s < host_samples; ++s) {
+            // A boundary starts the next popped block; on a failed pop the
+            // phase keeps counting so the last frame stays held (clamped).
+            while (fire < fires && s >= t.downsample_offsets[fire]) {
+                for (size_t c = 0; c < num_ch; ++c)
+                    for (size_t j = 0; j < out_block; ++j)
+                        t.downsample_hold.set_sample(
+                            c, j, t.downsample_pop.get_sample(c, fire * out_block + j));
+                t.hold_phase = 0;
+                ++fire;
             }
-            t.downsample_hold.set_sample(c, 0, held);
+            // Sample j of the block covers host time [j, j+1)*in_block/out_block
+            // after its boundary; hold each across its own sub-segment.
+            const size_t frame =
+                std::min(out_block - 1, (t.hold_phase * out_block) / in_block);
+            for (size_t c = 0; c < num_ch; ++c)
+                output_data[i][c][s] = t.downsample_hold.get_sample(c, frame);
+            ++t.hold_phase;
         }
     }
 }

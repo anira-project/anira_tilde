@@ -333,6 +333,86 @@ TEST_P(RateAdaptation, DownsamplePopsOncePerInputBlockBoundary) {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-frame blocks (unit level, no backend): a model block can carry
+// several frames of a slower stream — e.g. 8 latent frames per 1024-sample
+// block, one frame per 128 samples of host time. The adaptor must gather
+// input frames at that stride (not consecutively) and play popped output
+// frames each across its own sub-segment.
+// ---------------------------------------------------------------------------
+
+#include "anira_tilde/rate_adaptation/RateAdaptor.h"
+
+namespace {
+
+anira_tilde::TensorLayout make_pair_layout(size_t in_block, size_t out_block) {
+    anira_tilde::TensorLayout layout;
+    layout.sig_input_channels  = {1};
+    layout.sig_output_channels = {1};
+    layout.input_block_sizes   = {in_block};
+    layout.output_block_sizes  = {out_block};
+    return layout;
+}
+
+} // namespace
+
+// Upsample pair, 4 frames per 16-sample block: each gathered frame j must
+// come from host offset boundary + j*4, not boundary + j.
+TEST(RateAdaptorUnit, UpsampleGathersFramesAtStride) {
+    auto layout = make_pair_layout(/*in=*/4, /*out=*/16);
+    anira_tilde::RateAdaptor adaptor;
+    adaptor.prepare(layout, /*max_block_size=*/32);
+
+    std::vector<float> in(32), out(32, 0.0f);
+    for (size_t i = 0; i < in.size(); ++i)
+        in[i] = static_cast<float>(i);
+
+    const float*        in_ch[1]    = { in.data() };
+    float*              out_ch[1]   = { out.data() };
+    const float* const* in_ptrs[1]  = { in_ch };
+    float* const*       out_ptrs[1] = { out_ch };
+    size_t in_sizes[1]  = { 32 };
+    size_t out_sizes[1] = { 32 };
+
+    auto view = adaptor.pre_dispatch(layout, in_ptrs, in_sizes, out_ptrs, out_sizes);
+
+    // Two boundaries (offsets 0 and 16) → two gathered blocks of 4 frames.
+    ASSERT_EQ(view.in_sample_counts[0], 8u);
+    const float* gathered = view.in_tensors[0][0];
+    const float expected[8] = { 0, 4, 8, 12, 16, 20, 24, 28 };
+    for (size_t j = 0; j < 8; ++j)
+        EXPECT_FLOAT_EQ(gathered[j], expected[j]) << "frame " << j;
+}
+
+// Downsample pair, 4 frames per 16-sample input block: each popped frame
+// must be held across its own 4-sample sub-segment, in order.
+TEST(RateAdaptorUnit, DownsampleHoldsEachFrameAcrossItsSubSegment) {
+    auto layout = make_pair_layout(/*in=*/16, /*out=*/4);
+    anira_tilde::RateAdaptor adaptor;
+    adaptor.prepare(layout, /*max_block_size=*/32);
+
+    std::vector<float> in(32, 0.0f), out(32, -1.0f);
+    const float*        in_ch[1]    = { in.data() };
+    float*              out_ch[1]   = { out.data() };
+    const float* const* in_ptrs[1]  = { in_ch };
+    float* const*       out_ptrs[1] = { out_ch };
+    size_t in_sizes[1]  = { 32 };
+    size_t out_sizes[1] = { 32 };
+
+    auto view = adaptor.pre_dispatch(layout, in_ptrs, in_sizes, out_ptrs, out_sizes);
+
+    // Two boundaries (offsets 0 and 16) → two block pops of 4 frames each;
+    // play the role of anira and write 1..8 into the pop scratch.
+    ASSERT_EQ(view.out_sample_counts[0], 8u);
+    for (size_t j = 0; j < 8; ++j)
+        view.out_tensors[0][0][j] = static_cast<float>(j + 1);
+
+    adaptor.post_dispatch(layout, out_ptrs, out_sizes);
+
+    for (size_t s = 0; s < 32; ++s)
+        EXPECT_FLOAT_EQ(out[s], static_cast<float>(s / 4 + 1)) << "sample " << s;
+}
+
+// ---------------------------------------------------------------------------
 // Combined: rate adaptation + state passing
 // upsample_state model: input_size=1, output_size=16, plus a state tensor
 // that accumulates (state_out = state_in + 1.0 per inference).
