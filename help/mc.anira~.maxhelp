@@ -669,11 +669,11 @@
 								"box" : 								{
 									"id" : "obj-1",
 									"maxclass" : "newobj",
-									"numinlets" : 1,
+									"numinlets" : 2,
 									"numoutlets" : 2,
 									"outlettype" : [ "signal", "int" ],
 									"patching_rect" : [ 25.0, 313.0, 190.0, 23.0 ],
-									"text" : "anira~ RaveFunkDrumConfig.json"
+									"text" : "anira~ rave_djembe_onnx.json"
 								}
 
 							}
@@ -878,11 +878,11 @@
 								"box" : 								{
 									"id" : "obj-3",
 									"maxclass" : "newobj",
-									"numinlets" : 4,
+									"numinlets" : 3,
 									"numoutlets" : 2,
 									"outlettype" : [ "signal", "int" ],
 									"patching_rect" : [ 25.0, 538.0, 234.0, 23.0 ],
-									"text" : "anira~ RaveFunkDrumConfigDecoder.json"
+									"text" : "anira~ rave_djembe_decoder_onnx.json"
 								}
 
 							}
@@ -1030,10 +1030,10 @@
 									"id" : "obj-1",
 									"maxclass" : "newobj",
 									"numinlets" : 1,
-									"numoutlets" : 5,
-									"outlettype" : [ "signal", "signal", "signal", "signal", "int" ],
+									"numoutlets" : 3,
+									"outlettype" : [ "signal", "signal", "int" ],
 									"patching_rect" : [ 25.0, 447.0, 305.666666666666686, 23.0 ],
-									"text" : "anira~ RaveFunkDrumConfigEncoder.json"
+									"text" : "anira~ rave_djembe_encoder_onnx.json"
 								}
 
 							}
@@ -1070,20 +1070,6 @@
  ],
 						"lines" : [ 							{
 								"patchline" : 								{
-									"destination" : [ "obj-3", 2 ],
-									"source" : [ "obj-1", 2 ]
-								}
-
-							}
-, 							{
-								"patchline" : 								{
-									"destination" : [ "obj-3", 1 ],
-									"source" : [ "obj-1", 1 ]
-								}
-
-							}
-, 							{
-								"patchline" : 								{
 									"destination" : [ "obj-3", 0 ],
 									"source" : [ "obj-1", 0 ]
 								}
@@ -1092,7 +1078,7 @@
 , 							{
 								"patchline" : 								{
 									"destination" : [ "obj-5", 0 ],
-									"source" : [ "obj-1", 3 ]
+									"source" : [ "obj-1", 1 ]
 								}
 
 							}
@@ -1135,7 +1121,7 @@
 							}
 , 							{
 								"patchline" : 								{
-									"destination" : [ "obj-3", 3 ],
+									"destination" : [ "obj-3", 1 ],
 									"source" : [ "obj-5", 0 ]
 								}
 
