@@ -15,6 +15,26 @@ set(C74_MIN_SCRIPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/min-api/script)
 include(${C74_MIN_SCRIPT_DIR}/min-package.cmake)
 include(${C74_MIN_SCRIPT_DIR}/min-pretarget.cmake)
 
+if(MSVC)
+    # max-pretarget forces the static CRT (/MT), the Max SDK default. Every
+    # static backend archive from anira-project/backends (ONNX Runtime, LiteRT,
+    # ExecuTorch) is built with the MSVC default dynamic CRT (/MD), and mixing
+    # the two is a hard LNK2038 error. Flip the whole build to /MD — Max
+    # ships the VC redistributable, so a dynamic-CRT external loads fine.
+    foreach(_lang C CXX)
+        foreach(_cfg DEBUG RELEASE MINSIZEREL RELWITHDEBINFO)
+            string(REPLACE "/MTd" "/MDd" CMAKE_${_lang}_FLAGS_${_cfg} "${CMAKE_${_lang}_FLAGS_${_cfg}}")
+            string(REPLACE "/MT" "/MD" CMAKE_${_lang}_FLAGS_${_cfg} "${CMAKE_${_lang}_FLAGS_${_cfg}}")
+        endforeach()
+    endforeach()
+    # max-pretarget also injects /MT via add_compile_options generator
+    # expressions; rewrite those on the directory property.
+    get_property(_anira_tilde_opts DIRECTORY PROPERTY COMPILE_OPTIONS)
+    string(REPLACE "/MTd" "/MDd" _anira_tilde_opts "${_anira_tilde_opts}")
+    string(REPLACE "/MT" "/MD" _anira_tilde_opts "${_anira_tilde_opts}")
+    set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "${_anira_tilde_opts}")
+endif()
+
 if(APPLE)
     # min/max-pretarget force 10.11. anira_tilde_core needs std::filesystem
     # (macOS 10.15+) and anira prefers 11.0 for C++20 <semaphore>; older anira
