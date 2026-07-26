@@ -148,7 +148,7 @@ Pushing a `v*.*.*` tag runs
 builds (macOS arm64, macOS x86_64, Windows x64), then a packaging job that
 lipo-merges the two macOS builds into **one universal external**, codesigns
 it (Developer ID, hardened runtime), notarizes and staples it, and publishes
-two Max packages on a draft GitHub Release:
+two Max packages on a GitHub Release:
 
 - `anira_tilde-macOS-universal-<version>.zip`
 - `anira_tilde-Windows-x86_64-<version>.zip`
