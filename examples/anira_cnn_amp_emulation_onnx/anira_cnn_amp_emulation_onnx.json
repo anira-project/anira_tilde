@@ -1,14 +1,43 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "steerable-nafx-libtorch-dynamic.onnx", "inference_backend": "ONNX" }
+            {
+                "model_path": "steerable-nafx-libtorch-dynamic.onnx",
+                "inference_backend": "ONNX"
+            }
         ],
         "tensor_shape": [
             {
-                "input_shape": [[1, 1, 15380]],
-                "output_shape": [[1, 1, 2048]]
+                "input_shape": [
+                    [
+                        1,
+                        1,
+                        15380
+                    ]
+                ],
+                "output_shape": [
+                    [
+                        1,
+                        1,
+                        2048
+                    ]
+                ]
             }
         ],
-        "max_inference_time": 42.7
+        "max_inference_time": 42.7,
+        "processing_spec": {
+            "preprocess_input_channels": [
+                1
+            ],
+            "postprocess_output_channels": [
+                1
+            ],
+            "preprocess_input_size": [
+                2048
+            ],
+            "postprocess_output_size": [
+                2048
+            ]
+        }
     }
 }

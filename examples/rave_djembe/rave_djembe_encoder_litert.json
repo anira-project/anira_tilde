@@ -2,8 +2,8 @@
     "inference_config": {
         "model_data": [
             {
-                "model_path": "steerable-nafx-executorch.pte",
-                "inference_backend": "EXECUTORCH"
+                "model_path": "rave_encoder.tflite",
+                "inference_backend": "LITERT"
             }
         ],
         "tensor_shape": [
@@ -12,32 +12,52 @@
                     [
                         1,
                         1,
-                        15380
+                        2048
+                    ],
+                    [
+                        1,
+                        5888
                     ]
                 ],
                 "output_shape": [
                     [
                         1,
+                        4,
+                        1
+                    ],
+                    [
                         1,
-                        2048
+                        5888
                     ]
                 ]
             }
         ],
-        "max_inference_time": 42.7,
         "processing_spec": {
             "preprocess_input_channels": [
+                1,
                 1
             ],
             "postprocess_output_channels": [
+                4,
                 1
             ],
             "preprocess_input_size": [
-                2048
+                2048,
+                0
             ],
             "postprocess_output_size": [
-                2048
+                1,
+                0
             ]
-        }
+        },
+        "max_inference_time": 63.1
+    },
+    "state_config": {
+        "state_pairs": [
+            {
+                "output_tensor": 1,
+                "input_tensor": 1
+            }
+        ]
     }
 }

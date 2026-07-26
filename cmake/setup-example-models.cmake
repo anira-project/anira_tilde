@@ -28,6 +28,11 @@ set(_anira_tilde_example_models
     "rave_djembe|rave_encoder.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_encoder.pte"
     "rave_djembe|rave_decoder.onnx|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_decoder.onnx"
     "rave_djembe|rave_decoder.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_decoder.pte"
+    "rave_djembe|rave_forward.tflite|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_forward.tflite"
+    "rave_djembe|rave_encoder.tflite|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_encoder.tflite"
+    "rave_djembe|rave_decoder.tflite|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_decoder.tflite"
+    "anira_cnn_amp_emulation_litert|steerable-nafx-dynamic.tflite|https://github.com/faressc/steerable-nafx/raw/refs/heads/main/models/model_0/steerable-nafx-dynamic.tflite"
+    "anira_rnn_amp_emulation_onnx|stateful-lstm-libtorch.onnx|https://github.com/vackva/stateful-lstm/raw/refs/heads/main/models/model_0/stateful-lstm-libtorch.onnx"
 )
 
 # TorchScript models load only in LibTorch-enabled builds; don't pull the
