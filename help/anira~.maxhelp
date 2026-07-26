@@ -363,7 +363,7 @@
 									"numoutlets" : 3,
 									"outlettype" : [ "signal", "", "int" ],
 									"patching_rect" : [ 25.0, 517.0, 166.0, 23.0 ],
-									"text" : "anira~ SimpleGainConfig.json"
+									"text" : "anira~ simple_gain.json"
 								}
 
 							}
@@ -1293,7 +1293,7 @@
 									"numoutlets" : 4,
 									"outlettype" : [ "signal", "signal", "", "int" ],
 									"patching_rect" : [ 72.0, 436.0, 205.0, 23.0 ],
-									"text" : "anira~ SimpleGainStereoConfig.json"
+									"text" : "anira~ simple_gain_stereo.json"
 								}
 
 							}
@@ -1317,7 +1317,7 @@
 									"numoutlets" : 3,
 									"outlettype" : [ "multichannelsignal", "", "int" ],
 									"patching_rect" : [ 377.0, 436.0, 222.0, 23.0 ],
-									"text" : "mc.anira~ SimpleGainStereoConfig.json"
+									"text" : "mc.anira~ simple_gain_stereo.json"
 								}
 
 							}

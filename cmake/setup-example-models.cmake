@@ -21,7 +21,8 @@ endif()
 # deletes and re-fetches them all (skip-if-exists would otherwise pin users
 # to stale models that no longer match the JSON configs).
 # 2: RaveDjembe moved to 1024-sample blocks (was 128).
-set(_anira_tilde_example_models_version 2)
+# 3: simple_gain example added (help-file gain tabs load it).
+set(_anira_tilde_example_models_version 3)
 
 # <example-dir>|<file-name>|<url>
 set(_anira_tilde_example_models
@@ -40,6 +41,10 @@ set(_anira_tilde_example_models
     "rave_djembe|rave_decoder.tflite|https://github.com/anira-project/example-models/raw/refs/heads/main/third-party/ircam-acids/RAVE/RaveDjembe/models/rave_decoder.tflite"
     "anira_cnn_amp_emulation_litert|steerable-nafx-dynamic.tflite|https://github.com/faressc/steerable-nafx/raw/refs/heads/main/models/model_0/steerable-nafx-dynamic.tflite"
     "anira_rnn_amp_emulation_onnx|stateful-lstm-libtorch.onnx|https://github.com/vackva/stateful-lstm/raw/refs/heads/main/models/model_0/stateful-lstm-libtorch.onnx"
+    "simple_gain|simple_gain_network_mono.onnx|https://github.com/anira-project/example-models/raw/refs/heads/main/SimpleGainNetwork/models/simple_gain_network_mono.onnx"
+    "simple_gain|simple_gain_network_mono.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/SimpleGainNetwork/models/simple_gain_network_mono.pte"
+    "simple_gain|simple_gain_network_stereo.onnx|https://github.com/anira-project/example-models/raw/refs/heads/main/SimpleGainNetwork/models/simple_gain_network_stereo.onnx"
+    "simple_gain|simple_gain_network_stereo.pte|https://github.com/anira-project/example-models/raw/refs/heads/main/SimpleGainNetwork/models/simple_gain_network_stereo.pte"
 )
 
 set(_stamp "${CMAKE_SOURCE_DIR}/examples/.example-models-version")

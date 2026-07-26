@@ -1,0 +1,61 @@
+{
+    "context_config": {
+        "num_threads": 1
+    },
+    "inference_config": {
+        "model_data": [
+            {
+                "model_path": "simple_gain_network_stereo.onnx",
+                "inference_backend": "ONNX"
+            },
+            {
+                "model_path": "simple_gain_network_stereo.pte",
+                "inference_backend": "EXECUTORCH"
+            }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [
+                    [
+                        1,
+                        2,
+                        512
+                    ],
+                    [
+                        1
+                    ]
+                ],
+                "output_shape": [
+                    [
+                        1,
+                        2,
+                        512
+                    ],
+                    [
+                        1
+                    ]
+                ]
+            }
+        ],
+        "processing_spec": {
+            "preprocess_input_channels": [
+                2,
+                1
+            ],
+            "postprocess_output_channels": [
+                2,
+                1
+            ],
+            "preprocess_input_size": [
+                512,
+                0
+            ],
+            "postprocess_output_size": [
+                512,
+                0
+            ]
+        },
+        "max_inference_time": 5.0,
+        "warm_up": 1
+    }
+}

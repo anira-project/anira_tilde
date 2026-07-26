@@ -1,0 +1,220 @@
+name: release
+
+# Tag-triggered release. Three platform builds produce raw externals; a macOS
+# packaging job lipo-merges the two macOS architectures into ONE universal
+# external, codesigns it (Developer ID, hardened runtime), notarizes and
+# staples it, then stages the Max packages for macOS (universal) and Windows
+# (x64) and publishes both as assets on a draft GitHub Release.
+#
+# workflow_dispatch runs the whole pipeline without publishing a release —
+# use it to validate signing/notarization before tagging.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS-arm64
+            os: macos-latest
+            preset: desktop-release
+          - name: macOS-x86_64
+            os: macos-latest
+            preset: macos-x64-release
+          - name: Windows-x86_64
+            os: windows-latest
+            preset: windows-release
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: unshallow submodules for git describe
+        shell: bash
+        run: git submodule foreach --recursive 'git fetch --unshallow --tags origin 2>/dev/null || git fetch --tags origin'
+
+      - name: setup build tools
+        uses: tanh-lab/ci-actions/setup-cpp-build-tools@main
+
+      - name: configure and build
+        uses: tanh-lab/ci-actions/cmake-build@main
+        with:
+          PRESET: ${{ matrix.preset }}
+
+      - name: upload externals
+        uses: actions/upload-artifact@v4
+        with:
+          name: externals-${{ matrix.name }}
+          path: externals/
+
+  package:
+    name: sign, notarize, package
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: download externals
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      # --- macOS universal: lipo the two single-arch builds -----------------
+      - name: merge macOS architectures
+        shell: bash
+        run: |
+          mkdir -p universal
+          for bundle in dist/externals-macOS-arm64/*.mxo; do
+            name="$(basename "$bundle")"
+            cp -R "$bundle" "universal/$name"
+            exe="$(find "$bundle/Contents/MacOS" -type f | head -1)"
+            rel="${exe#"$bundle"/}"
+            lipo -create "dist/externals-macOS-arm64/$name/$rel" \
+                         "dist/externals-macOS-x86_64/$name/$rel" \
+                 -output  "universal/$name/$rel"
+            lipo -info "universal/$name/$rel"
+          done
+          # Any loose dylibs would need per-arch merging too; default builds
+          # are fully static, so their presence means something changed.
+          if find dist/externals-macOS-arm64 -name '*.dylib' | grep -q .; then
+            echo "error: unexpected dylibs in externals (static build expected)" >&2
+            exit 1
+          fi
+
+      # --- Codesign + notarize + staple the universal externals -------------
+      - name: import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DEV_ID_APP_CERT }}
+          p12-password: ${{ secrets.DEV_ID_APP_PWD }}
+
+      - name: codesign
+        shell: bash
+        env:
+          SIGN_IDENTITY: ${{ secrets.DEV_ID_APP }}
+        run: .github/scripts/codesign_macos.sh universal
+
+      - name: notarize and staple
+        shell: bash
+        env:
+          APPLE_DEV_ID: ${{ secrets.APPLE_DEV_ID }}
+          APPLE_DEV_PWD: ${{ secrets.APPLE_DEV_PWD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent universal notarize.zip
+          xcrun notarytool submit notarize.zip \
+            --apple-id "$APPLE_DEV_ID" --password "$APPLE_DEV_PWD" \
+            --team-id "$TEAM_ID" --wait --output-format json | tee notarize.json
+          status="$(jq -r '.status' notarize.json)"
+          if [[ "$status" != "Accepted" ]]; then
+            id="$(jq -r '.id' notarize.json)"
+            xcrun notarytool log "$id" \
+              --apple-id "$APPLE_DEV_ID" --password "$APPLE_DEV_PWD" \
+              --team-id "$TEAM_ID" || true
+            echo "error: notarization status: $status" >&2
+            exit 1
+          fi
+          for bundle in universal/*.mxo; do
+            xcrun stapler staple "$bundle"
+            xcrun stapler validate "$bundle"
+          done
+
+      # --- Example models (same manifest the configure-time download uses) --
+      - name: fetch example models
+        shell: bash
+        run: cmake -P cmake/setup-example-models.cmake
+
+      # --- Stage both Max packages ------------------------------------------
+      - name: stage Max packages
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-$(git rev-parse --short HEAD)"
+          fi
+
+          stage() {  # stage <package-dir> <externals-src-dir>
+            local STAGE="$1/anira_tilde" SRC="$2"
+            mkdir -p "$STAGE/externals"
+            cp -R "$SRC"/. "$STAGE/externals/"
+            rm -f "$STAGE"/externals/libgtest* "$STAGE"/externals/libgmock*
+            cp -R help examples docs "$STAGE/"
+            # Trim the package to what the shipped (static, no-LibTorch)
+            # externals can run out of the box:
+            #  - RAVE weights are ~90 MB per backend and identical in sound;
+            #    ship ONNX only, drop the LiteRT/ExecuTorch duplicates and
+            #    their configs (building from source fetches everything).
+            #  - The LibTorch sine example needs an opt-in build.
+            rm -f "$STAGE"/examples/rave_djembe/*.pte "$STAGE"/examples/rave_djembe/*.tflite
+            rm -f "$STAGE"/examples/rave_djembe/*_litert.json "$STAGE"/examples/rave_djembe/*_executorch.json
+            rm -rf "$STAGE"/examples/sine_oscillator_libtorch
+            rm -f "$STAGE"/examples/.example-models-version
+            cp README.md LICENSE "$STAGE/"
+            cp .github/assets/icon.png "$STAGE/icon.png"
+            sed -e "s/@C74_PACKAGE_NAME@/anira_tilde/" \
+                -e "s/@GIT_VERSION_MAJ@\.@GIT_VERSION_MIN@\.@GIT_VERSION_SUB@/${VERSION}/" \
+                package-info.json.in > "$STAGE/package-info.json"
+          }
+
+          stage package-macos   universal
+          stage package-windows dist/externals-Windows-x86_64
+          du -sh package-macos package-windows
+
+      - name: upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: anira_tilde-macOS-universal
+          path: package-macos/
+
+      - name: upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: anira_tilde-Windows-x86_64
+          path: package-windows/
+
+  release:
+    name: draft GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: anira_tilde-*
+          path: dist
+
+      - name: zip per-platform packages
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          for d in dist/anira_tilde-*; do
+            name="$(basename "$d")"
+            (cd "$d" && zip -r -X "${GITHUB_WORKSPACE}/release/${name}-${VERSION}.zip" . -x '*.DS_Store')
+          done
+          ls -la release
+
+      - name: create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: release/*.zip

@@ -56,7 +56,7 @@ shape of every input and output tensor:
 ```jsonc
 "tensor_shape": [
     {
-        "backend":     "LIBTORCH",                                 // optional
+        "inference_backend": "ONNX",                               // optional
         "input_shape":  [[1, 1, 512], [1, 32]],                    // 2 input tensors
         "output_shape": [[1, 1, 512], [1, 32]]                     // 2 output tensors
     }
@@ -65,8 +65,10 @@ shape of every input and output tensor:
 
 - `input_shape` / `output_shape` are arrays of arrays. The outer array is per
   tensor; the inner array is the shape of that tensor.
-- `backend` is optional. If a single shape entry covers every backend (the
-  common case), omit it; otherwise tag each entry.
+- `inference_backend` is optional. If a single shape entry covers every
+  backend (the common case), omit it; otherwise tag each entry — useful when
+  one backend's export declares a tensor differently (e.g. a scalar as
+  `[1, 1, 1]` instead of `[1]`).
 
 ### `max_inference_time`
 

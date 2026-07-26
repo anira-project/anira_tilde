@@ -143,23 +143,39 @@ test/        *.cpp + .json.in    gtest suite, exercises the core library
 
 ## Packaging
 
-CI builds produce per-platform Max packages (`anira_tilde-<platform>.zip`)
-containing the layout Max expects:
+Pushing a `v*.*.*` tag runs
+[`.github/workflows/release.yml`](../workflows/release.yml): three platform
+builds (macOS arm64, macOS x86_64, Windows x64), then a packaging job that
+lipo-merges the two macOS builds into **one universal external**, codesigns
+it (Developer ID, hardened runtime), notarizes and staples it, and publishes
+two Max packages on a draft GitHub Release:
+
+- `anira_tilde-macOS-universal-<version>.zip`
+- `anira_tilde-Windows-x86_64-<version>.zip`
+
+Each contains the layout Max expects:
 
 ```
 anira_tilde/
-├── package-info.json
+├── package-info.json        version synced to the tag
 ├── icon.png
 ├── README.md
 ├── LICENSE
-├── externals/anira~.mxo  (or anira~.mxe64)
-├── help/anira~.maxhelp
-├── docs/anira~.maxref.xml
-└── examples/
+├── externals/               anira~ + mc.anira~ (.mxo universal / .mxe64)
+├── help/                    help patches (load the bundled examples)
+├── docs/                    .maxref.xml reference pages
+└── examples/                configs + models, ready to load
 ```
 
-See [`.github/workflows/build.yml`](../workflows/build.yml) for the
-staging step.
+The packaged examples are trimmed to what the shipped externals run out of
+the box: RAVE ships ONNX-only (the LiteRT/ExecuTorch model duplicates are
+~90 MB each) and the LibTorch sine example is dropped. Building from source
+always fetches the full set.
+
+`workflow_dispatch` runs the same pipeline without publishing — use it to
+validate signing and notarization before tagging. Per-commit CI
+([`build.yml`](../workflows/build.yml)) additionally stages unsigned
+per-arch packages as build artifacts.
 
 ## Sanitizers in CI
 
