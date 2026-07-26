@@ -94,14 +94,4 @@ bool TensorLayout::is_state_tensor(const std::vector<StatePair>& pairs,
     return tensor_referenced(pairs, tensor_index, side_is_input);
 }
 
-bool TensorLayout::mixing_makes_sense() const {
-    for (size_t i = 0;
-         i < sig_input_channels.size() && i < sig_output_channels.size(); ++i) {
-        if (input_block_sizes[i] != output_block_sizes[i]
-            || sig_input_channels[i] != sig_output_channels[i])
-            return false;
-    }
-    return true;
-}
-
 } // namespace anira_tilde

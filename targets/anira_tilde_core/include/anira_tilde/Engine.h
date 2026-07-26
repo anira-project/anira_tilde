@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "anira_tilde/Exports.h"
-#include "anira_tilde/mixing/Mixer.h"
 #include "anira_tilde/inference/Session.h"
 
 namespace anira_tilde {
@@ -15,7 +14,9 @@ namespace anira_tilde {
  * @brief Host-agnostic inference engine for the anira~ external.
  *
  * Wraps a Session (anira pipeline + state passing + rate adaptation)
- * together with the dry/wet Mixer and per-tensor audio scratch buffers.
+ * together with the per-tensor audio scratch buffers. The wet (model)
+ * signal is written straight to the outputs; any dry/wet blend is the
+ * host's responsibility.
  * Float-only — hosts that work in double (Max/MSP) cast at their boundary.
  *
  * Lifecycle: construct with the JSON config, call prepare() from the
@@ -53,20 +54,15 @@ public:
     void  set_message_input (size_t tensor_index, const std::vector<float>& values);
     float get_message_output(size_t tensor_index, size_t channel);
 
-    // --- Dry/wet mixer ---------------------------------------------------
-    void set_dry_wet_mix(float mix01);
-    bool mixing_disabled() const noexcept { return m_mixing_disabled; }
-
 private:
     void prepare_audio_buffers();
     void process_anira();
-    void write_mixed_output(const float* const* input,  size_t num_input_channels,
-                            float* const*       output, size_t num_output_channels,
-                            size_t sample_count, bool ready,
-                            const TensorLayout& layout);
+    void write_output(const float* const* input,  size_t num_input_channels,
+                      float* const*       output, size_t num_output_channels,
+                      size_t sample_count, bool ready,
+                      const TensorLayout& layout);
 
     std::unique_ptr<Session> m_session;
-    Mixer                    m_mixer;
 
     std::vector<anira::Buffer<float>>  m_input_buffers;
     std::vector<anira::Buffer<float>>  m_output_buffers;
@@ -77,8 +73,11 @@ private:
     std::vector<size_t>  m_input_sample_counts;
     std::vector<size_t>  m_output_sample_counts;
 
+    // Per-output-channel cache of the last valid wet sample, used when a
+    // rate-adapted model returns no new samples for a block (wet_period == 0).
+    std::vector<float>   m_last_wet;
+
     size_t            m_host_buffer_size = 0;
-    bool              m_mixing_disabled  = false;
     std::atomic<bool> m_ready{false};
 };
 

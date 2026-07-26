@@ -83,17 +83,6 @@ protected:
     // name is the Max object name ("anira~" / "mc.anira~"), used in console output.
     explicit AniraTildeBase(const char* name) :
         m_name(name),
-        dry_wet(this, "mix", "Set the dry/wet mix of the output",
-            MIN_FUNCTION {
-                if (!m_engine.config_loaded() || m_engine.mixing_disabled()) {
-                    c74::max::error("%s: Mix parameter disabled for this model configuration.", m_name);
-                    return {};
-                }
-                const float new_mix = std::clamp(static_cast<float>(args[0]), 0.0f, 100.0f) / 100.0f;
-                m_engine.set_dry_wet_mix(new_mix);
-                return {};
-            }
-        ),
         dspsetup(this, "dspsetup",
             MIN_FUNCTION {
                 const auto sample_rate = static_cast<double>(args[0]);
@@ -231,7 +220,6 @@ protected:
     // dspsetup makes min-api's has_dspsetup SFINAE silently fail, so the custom
     // DSP setup never runs and the audio scratch is never allocated.
 public:
-    c74::min::message<> dry_wet;
     c74::min::message<> dspsetup;
     c74::min::message<> anything;
     c74::min::message<> m_float;

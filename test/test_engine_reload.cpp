@@ -82,11 +82,11 @@ TEST_P(EngineReload, ReprepareRevivesEngine) {
 }
 
 // Regression: a single output tensor carrying multiple channels (the encode-
-// style RAVE shape, e.g. 16 latents in one [1, C, 1] tensor). The dry/wet
-// Mixer's per-channel delay state must be sized to the total output-channel
-// count, not the output-tensor count. Sizing it to the tensor count (1) made
-// every channel >= 1 index out of bounds in process_channel_block and crashed
-// the audio thread with a write fault.
+// style RAVE shape, e.g. 16 latents in one [1, C, 1] tensor). The Engine's
+// per-channel output path must be sized to the total output-channel count,
+// not the output-tensor count — sizing to the tensor count (1) once made
+// every channel >= 1 index out of bounds and crashed the audio thread with
+// a write fault (originally in the since-removed dry/wet Mixer).
 TEST_P(EngineReload, MultiChannelSingleTensorOutputDoesNotCrash) {
     Engine engine;
     ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("multichannel_out_test", GetParam())));

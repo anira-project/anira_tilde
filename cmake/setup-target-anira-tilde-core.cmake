@@ -6,7 +6,6 @@ add_library(anira_tilde_core STATIC
     ${_core_dir}/src/Engine.cpp
     ${_core_dir}/src/inference/Session.cpp
     ${_core_dir}/src/inference/TensorLayout.cpp
-    ${_core_dir}/src/mixing/Mixer.cpp
     ${_core_dir}/src/rate_adaptation/RateAdaptor.cpp
     ${_core_dir}/src/resampling/Resampler.cpp
     ${_core_dir}/src/resampling/ResamplerConfigParser.cpp
