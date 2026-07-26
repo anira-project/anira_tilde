@@ -1,20 +1,15 @@
 #include <gtest/gtest.h>
 #include <anira_tilde/Engine.h>
+#include "TestBackends.h"
 #include <vector>
 
 using namespace anira_tilde;
 
-#ifndef SINE_OSC_JSON_PATH
-#error "SINE_OSC_JSON_PATH must be defined via CMake"
-#endif
-#ifndef DOWNSAMPLE_JSON_PATH
-#error "DOWNSAMPLE_JSON_PATH must be defined via CMake"
-#endif
-#ifndef MULTICHANNEL_OUT_JSON_PATH
-#error "MULTICHANNEL_OUT_JSON_PATH must be defined via CMake"
-#endif
+using anira_tilde_test::Backend;
 
-#ifdef USE_LIBTORCH
+// Runs once per compiled-in backend (see TestBackends.h); LibTorch coverage
+// exists only when the build enables ANIRA_WITH_LIBTORCH.
+class EngineReload : public testing::TestWithParam<Backend> {};
 
 namespace {
 
@@ -32,15 +27,15 @@ void run_one_block(Engine& engine, size_t n_in_ch, size_t n_out_ch, size_t frame
 
 } // namespace
 
-TEST(EngineReload, LoadingTwiceReplacesSession) {
+TEST_P(EngineReload, LoadingTwiceReplacesSession) {
     Engine engine;
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     ASSERT_TRUE(engine.config_loaded());
     const size_t in_ch_1  = engine.layout().sig_input_channels.size();
     const size_t out_ch_1 = engine.layout().sig_output_channels.size();
 
     // Reload the same config. Should succeed; previous Session is destroyed.
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     ASSERT_TRUE(engine.config_loaded());
 
     // Layout unchanged after reload of identical config.
@@ -48,23 +43,23 @@ TEST(EngineReload, LoadingTwiceReplacesSession) {
     EXPECT_EQ(engine.layout().sig_output_channels.size(), out_ch_1);
 }
 
-TEST(EngineReload, ReadyResetsAfterReload) {
+TEST_P(EngineReload, ReadyResetsAfterReload) {
     Engine engine;
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     engine.prepare(64, 44100.0);
     EXPECT_TRUE(engine.ready());
 
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     EXPECT_FALSE(engine.ready())
         << "load_config must park the engine until prepare() runs again";
 }
 
-TEST(EngineReload, ProcessBeforeReprepareIsSafe) {
+TEST_P(EngineReload, ProcessBeforeReprepareIsSafe) {
     Engine engine;
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     engine.prepare(64, 44100.0);
 
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     // Engine is parked. process() must not crash or touch stale buffers.
     EXPECT_NO_THROW(run_one_block(engine,
                                   engine.layout().sig_input_channels.size(),
@@ -72,12 +67,12 @@ TEST(EngineReload, ProcessBeforeReprepareIsSafe) {
                                   64));
 }
 
-TEST(EngineReload, ReprepareRevivesEngine) {
+TEST_P(EngineReload, ReprepareRevivesEngine) {
     Engine engine;
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     engine.prepare(64, 44100.0);
 
-    ASSERT_TRUE(engine.load_config(SINE_OSC_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("sine_oscillator_test", GetParam())));
     engine.prepare(64, 44100.0);
     EXPECT_TRUE(engine.ready());
     EXPECT_NO_THROW(run_one_block(engine,
@@ -92,9 +87,9 @@ TEST(EngineReload, ReprepareRevivesEngine) {
 // count, not the output-tensor count. Sizing it to the tensor count (1) made
 // every channel >= 1 index out of bounds in process_channel_block and crashed
 // the audio thread with a write fault.
-TEST(EngineReload, MultiChannelSingleTensorOutputDoesNotCrash) {
+TEST_P(EngineReload, MultiChannelSingleTensorOutputDoesNotCrash) {
     Engine engine;
-    ASSERT_TRUE(engine.load_config(MULTICHANNEL_OUT_JSON_PATH));
+    ASSERT_TRUE(engine.load_config(anira_tilde_test::json_path("multichannel_out_test", GetParam())));
 
     ASSERT_EQ(engine.layout().sig_output_channels.size(), 1u)
         << "fixture must have exactly one output tensor";
@@ -112,7 +107,7 @@ TEST(EngineReload, MultiChannelSingleTensorOutputDoesNotCrash) {
         EXPECT_NO_THROW(run_one_block(engine, n_in_ch, n_out_ch, 64));
 }
 
-TEST(EngineReload, BadPathLeavesEngineEmpty) {
+TEST(EngineReloadErrors, BadPathLeavesEngineEmpty) {
     Engine engine;
     std::string err;
     EXPECT_FALSE(engine.load_config("/does/not/exist.json", &err));
@@ -120,10 +115,6 @@ TEST(EngineReload, BadPathLeavesEngineEmpty) {
     EXPECT_FALSE(err.empty());
 }
 
-#else // !USE_LIBTORCH
-
-TEST(EngineReload, SkippedWithoutLibTorch) {
-    GTEST_SKIP() << "LibTorch unavailable — Engine reload tests skipped";
-}
-
-#endif
+INSTANTIATE_TEST_SUITE_P(Backends, EngineReload,
+                         testing::ValuesIn(anira_tilde_test::backends()),
+                         anira_tilde_test::param_name);

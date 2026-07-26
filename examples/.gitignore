@@ -1,0 +1,8 @@
+# Example models are downloaded next to their JSON configs at configure time
+# (cmake/setup-example-models.cmake) — never committed.
+*.onnx
+*.pte
+*.tflite
+*.ts
+*.pt
+.example-models-version

@@ -1,0 +1,19 @@
+	pytorch2.13.0:í
+E/Constant_output_0	/Constant"Constant*
+value*Jÿÿÿÿÿÿÿÿ 
+U
+onnx::ReduceMean_0
+/Constant_output_02/ReduceMean"
+ReduceMean*
+keepdims 
+main_graphZ(
+onnx::ReduceMean_0
+
+
+
+ b
+2
+
+
+
+B

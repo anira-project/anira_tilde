@@ -2,18 +2,20 @@
 #include <thread>
 #include <chrono>
 #include <cmath>
+#include "TestBackends.h"
 #include "anira_tilde/inference/Session.h"
 
 using namespace anira_tilde;
 
-#ifndef SINE_OSC_JSON_PATH
-#error "SINE_OSC_JSON_PATH must be defined via CMake"
-#endif
 #ifndef SINE_OSC_RELATIVE_JSON_PATH
 #error "SINE_OSC_RELATIVE_JSON_PATH must be defined via CMake"
 #endif
 
-#ifdef USE_LIBTORCH
+using anira_tilde_test::Backend;
+
+// Runs once per compiled-in backend (see TestBackends.h); LibTorch coverage
+// exists only when the build enables ANIRA_WITH_LIBTORCH.
+class AniraSession : public testing::TestWithParam<Backend> {};
 
 static constexpr size_t kAPSineSignalSize = 512;
 static constexpr float  kAPSampleRate     = 44100.0f;
@@ -33,8 +35,8 @@ static constexpr float  kAPSampleRate     = 44100.0f;
 // The fix in anira_tilde::Session::process(): call pop_data (→ new_data_request
 // → post_process(N-1) writes fresh state) BEFORE push_data (→
 // new_data_submitted → pre_process(N) reads it).
-TEST(AniraSession, MaxLikeCallbackPatternAreContinuous) {
-    anira_tilde::Session proc(SINE_OSC_JSON_PATH);
+TEST_P(AniraSession, MaxLikeCallbackPatternAreContinuous) {
+    anira_tilde::Session proc(anira_tilde_test::json_path("sine_oscillator_test", GetParam()));
     proc.prepare(kAPSineSignalSize, kAPSampleRate);
 
     const float freq     = 440.0f;
@@ -93,15 +95,13 @@ TEST(AniraSession, MaxLikeCallbackPatternAreContinuous) {
     }
 }
 
-TEST(AniraSession, RelativeModelPathLoads) {
+// Not backend-parameterized: the committed fixture uses the always-available
+// ONNX backend; what is under test is the relative-path resolution.
+TEST(AniraSessionPaths, RelativeModelPathLoads) {
     // Verifies that model_path values relative to the JSON config file are resolved correctly.
     EXPECT_NO_THROW(anira_tilde::Session proc(SINE_OSC_RELATIVE_JSON_PATH));
 }
 
-#else  // !USE_LIBTORCH
-
-TEST(AniraSession, SkippedWithoutLibTorch) {
-    GTEST_SKIP() << "LibTorch not available – anira_tilde::Session integration test skipped";
-}
-
-#endif  // USE_LIBTORCH
+INSTANTIATE_TEST_SUITE_P(Backends, AniraSession,
+                         testing::ValuesIn(anira_tilde_test::backends()),
+                         anira_tilde_test::param_name);

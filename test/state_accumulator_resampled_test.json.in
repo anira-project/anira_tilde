@@ -1,0 +1,29 @@
+{
+    "inference_config": {
+        "model_data": [
+            { "model_path": "@MODELS_DIR@/state_accumulator.@TEST_MODEL_EXT@", "inference_backend": "@TEST_BACKEND@" }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape":  [[1, 1, 128], [1, 4]],
+                "output_shape": [[1, 1, 128], [1, 4]]
+            }
+        ],
+        "processing_spec": {
+            "preprocess_input_channels":   [1, 1],
+            "postprocess_output_channels": [1, 1],
+            "preprocess_input_size":       [128, 0],
+            "postprocess_output_size":     [128, 0]
+        },
+        "max_inference_time": @state_accumulator_resampled_test_max_inference_time@
+    },
+    "state_config": {
+        "state_pairs": [
+            { "output_tensor": 1, "input_tensor": 1 }
+        ]
+    },
+    "resampler_config": {
+        "model_sample_rate": 44100,
+        "quality": "sinc_fastest"
+    }
+}

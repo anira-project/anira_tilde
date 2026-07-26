@@ -78,14 +78,15 @@ namespace {
     }
 }
 
-#ifdef __APPLE__
-// macOS: built as mc_anira_tilde_impl.dylib, dlopen'd by the mc.anira~ loader
-// shim, which calls this C-linkage entry once it has cleared the libtorch guard.
+#ifdef ANIRA_TILDE_LIBTORCH_GUARD
+// macOS with the LibTorch backend: built as mc_anira_tilde_impl.dylib, dlopen'd
+// by the mc.anira~ loader shim, which calls this C-linkage entry once it has
+// cleared the libtorch guard.
 extern "C" __attribute__((visibility("default"))) void mc_anira_tilde_impl_main(void* r) {
     register_mc_anira(r);
 }
 #else
-// Other platforms load this module (mc.anira~) directly.
+// No guard needed: Max loads this module (mc.anira~) directly.
 void ext_main(void* r) {
     register_mc_anira(r);
 }

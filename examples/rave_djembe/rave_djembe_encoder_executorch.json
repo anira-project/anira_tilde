@@ -1,0 +1,70 @@
+{
+    "inference_config": {
+        "model_data": [
+            {
+                "model_path": "rave_encoder.pte",
+                "inference_backend": "EXECUTORCH"
+            }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [
+                    [
+                        1,
+                        1,
+                        1024
+                    ],
+                    [
+                        1,
+                        7136
+                    ]
+                ],
+                "output_shape": [
+                    [
+                        1,
+                        2,
+                        8
+                    ],
+                    [
+                        1,
+                        7136
+                    ]
+                ]
+            }
+        ],
+        "processing_spec": {
+            "preprocess_input_channels": [
+                1,
+                1
+            ],
+            "postprocess_output_channels": [
+                2,
+                1
+            ],
+            "preprocess_input_size": [
+                1024,
+                0
+            ],
+            "postprocess_output_size": [
+                8,
+                0
+            ]
+        },
+        "max_inference_time": 16.0
+    },
+    "state_config": {
+        "state_pairs": [
+            {
+                "output_tensor": 1,
+                "input_tensor": 1
+            }
+        ]
+    },
+    "resampler_config": {
+        "model_sample_rate": 44100,
+        "quality": "sinc_fastest",
+        "output_quality": {
+            "0": "hold"
+        }
+    }
+}

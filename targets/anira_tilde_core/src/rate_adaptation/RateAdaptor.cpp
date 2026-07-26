@@ -1,5 +1,7 @@
 #include "anira_tilde/rate_adaptation/RateAdaptor.h"
 
+#include <algorithm>
+
 namespace anira_tilde {
 
 static RateAdaptor::Kind classify(size_t in_sz, size_t out_sz) {
@@ -8,20 +10,7 @@ static RateAdaptor::Kind classify(size_t in_sz, size_t out_sz) {
     return in_sz < out_sz ? Kind::Upsample : Kind::Downsample;
 }
 
-bool RateAdaptor::next_inference_offset(size_t pos,
-                                        size_t output_block_size,
-                                        size_t host_samples,
-                                        size_t& out_offset) noexcept {
-    // Boundary = smallest multiple of output_block_size that is ≥ pos.
-    const size_t boundary = (pos % output_block_size == 0)
-        ? pos
-        : ((pos / output_block_size) + 1) * output_block_size;
-    if (boundary >= pos + host_samples) return false;
-    out_offset = boundary - pos;
-    return true;
-}
-
-void RateAdaptor::prepare(const TensorLayout& layout, size_t /*host_buffer_size*/) {
+void RateAdaptor::prepare(const TensorLayout& layout, size_t max_block_size) {
     const size_t n_sig_in    = layout.sig_input_channels.size();
     const size_t n_sig_out   = layout.sig_output_channels.size();
     const size_t n_total_in  = layout.input_block_sizes.size();
@@ -36,11 +25,28 @@ void RateAdaptor::prepare(const TensorLayout& layout, size_t /*host_buffer_size*
     for (size_t i = 0; i < n_sig_in && i < n_sig_out; ++i) {
         m_tensors[i].kind = classify(layout.input_block_sizes[i],
                                      layout.output_block_sizes[i]);
+        if (m_tensors[i].kind == Kind::Upsample) {
+            // Worst case one inference per output-block boundary in a
+            // max-sized host block, +1 for the block-straddling boundary.
+            const size_t max_fires =
+                max_block_size / layout.output_block_sizes[i] + 1;
+            m_tensors[i].max_fires = max_fires;
+            m_tensors[i].upsample_gather.assign(
+                layout.sig_input_channels[i],
+                std::vector<float>(max_fires * layout.input_block_sizes[i], 0.0f));
+        }
         if (m_tensors[i].kind == Kind::Downsample) {
-            m_tensors[i].downsample_hold.resize(layout.sig_output_channels[i], 1);
-            m_tensors[i].downsample_pop .resize(layout.sig_output_channels[i], 1);
+            const size_t max_fires =
+                max_block_size / layout.input_block_sizes[i] + 1;
+            m_tensors[i].max_fires = max_fires;
+            m_tensors[i].downsample_hold.resize(layout.sig_output_channels[i],
+                                                layout.output_block_sizes[i]);
+            m_tensors[i].downsample_pop .resize(layout.sig_output_channels[i],
+                                                max_fires * layout.output_block_sizes[i]);
             m_tensors[i].downsample_hold.clear();
             m_tensors[i].downsample_pop .clear();
+            m_tensors[i].downsample_offsets.reserve(max_fires);
+            m_tensors[i].hold_phase = 0;
         }
         if (m_tensors[i].kind != Kind::Equal) m_active = true;
     }
@@ -80,22 +86,33 @@ RateAdaptor::AniraView RateAdaptor::pre_dispatch(const TensorLayout& layout,
         const size_t num_ch       = layout.sig_input_channels[i];
 
         if (t.kind == Kind::Upsample) {
-            size_t offset = 0;
-            const bool fire = next_inference_offset(t.upsample_pos,
-                                                    layout.output_block_sizes[i],
-                                                    host_samples,
-                                                    offset);
-            if (fire) {
-                m_in_view_sample_counts[i] = layout.input_block_sizes[i];
-                for (size_t c = 0; c < num_ch; ++c)
-                    m_in_view_channels[i][c] = input_data[i][c] + offset;
-            } else {
-                // No boundary in this block — feed nothing.
-                m_in_view_sample_counts[i] = 0;
-                for (size_t c = 0; c < num_ch; ++c)
-                    m_in_view_channels[i][c] = input_data[i][c];
+            // Gather one input block per output-size boundary crossed inside
+            // this host block; anira runs one inference per gathered block.
+            const size_t out_block = layout.output_block_sizes[i];
+            const size_t in_block  = layout.input_block_sizes[i];
+            const size_t start     = t.pos;
+            size_t boundary = (start % out_block == 0)
+                ? start
+                : ((start / out_block) + 1) * out_block;
+            size_t fires = 0;
+            for (; boundary < start + host_samples &&
+                   fires < t.max_fires; boundary += out_block) {
+                const size_t offset = boundary - start;
+                for (size_t c = 0; c < num_ch; ++c) {
+                    float* dst = t.upsample_gather[c].data() + fires * in_block;
+                    // Sample j of the block represents host time
+                    // j*out_block/in_block after the boundary — pick at that
+                    // stride so a multi-frame block gets distinct frames.
+                    for (size_t j = 0; j < in_block; ++j)
+                        dst[j] = input_data[i][c][std::min(
+                            offset + (j * out_block) / in_block, host_samples - 1)];
+                }
+                ++fires;
             }
-            t.upsample_pos += host_samples;
+            m_in_view_sample_counts[i] = fires * in_block;
+            for (size_t c = 0; c < num_ch; ++c)
+                m_in_view_channels[i][c] = t.upsample_gather[c].data();
+            t.pos += host_samples;
         } else {
             // Equal-rate or downsample: hand the whole host buffer to anira.
             m_in_view_sample_counts[i] = host_samples;
@@ -110,11 +127,25 @@ RateAdaptor::AniraView RateAdaptor::pre_dispatch(const TensorLayout& layout,
         const size_t num_ch       = layout.sig_output_channels[i];
 
         if (i < n_in && m_tensors[i].kind == Kind::Downsample) {
-            // Pop a single sample into our scratch; post_dispatch will
-            // splatter it across the host output.
-            m_out_view_sample_counts[i] = layout.output_block_sizes[i];
+            // One inference completes per input_size samples of host time:
+            // pop one output block per boundary crossed in this host block
+            // into our scratch; post_dispatch holds each across its segment.
+            PerTensor&   t        = m_tensors[i];
+            const size_t in_block = layout.input_block_sizes[i];
+            const size_t start    = t.pos;
+            size_t boundary = (start % in_block == 0)
+                ? start
+                : ((start / in_block) + 1) * in_block;
+            t.downsample_offsets.clear();
+            for (; boundary < start + host_samples &&
+                   t.downsample_offsets.size() < t.max_fires; boundary += in_block)
+                t.downsample_offsets.push_back(boundary - start);
+            t.pos += host_samples;
+
+            m_out_view_sample_counts[i] =
+                t.downsample_offsets.size() * layout.output_block_sizes[i];
             for (size_t c = 0; c < num_ch; ++c)
-                m_out_view_channels[i][c] = m_tensors[i].downsample_pop.get_write_pointer(c);
+                m_out_view_channels[i][c] = t.downsample_pop.get_write_pointer(c);
         } else {
             m_out_view_sample_counts[i] = host_samples;
             for (size_t c = 0; c < num_ch; ++c)
@@ -141,13 +172,33 @@ void RateAdaptor::post_dispatch(const TensorLayout& layout,
         PerTensor&   t            = m_tensors[i];
         const size_t host_samples = num_output_samples[i];
         const size_t num_ch       = layout.sig_output_channels[i];
-        for (size_t c = 0; c < num_ch; ++c) {
-            // Refresh the held value when anira actually produced output.
-            if (m_out_view_sample_counts[i] > 0)
-                t.downsample_hold.set_sample(c, 0, t.downsample_pop.get_sample(c, 0));
-            const float held = t.downsample_hold.get_sample(c, 0);
-            for (size_t s = 0; s < host_samples; ++s)
-                output_data[i][c][s] = held;
+        const size_t out_block    = layout.output_block_sizes[i];
+        const size_t in_block     = layout.input_block_sizes[i];
+        // anira's pop_data rewrites the requested count in place: 0 means the
+        // receive ring couldn't cover the request and our scratch holds
+        // zero-fill, not results — keep playing the previous block then.
+        const size_t fires        = m_out_view_sample_counts[i] == 0
+            ? 0
+            : t.downsample_offsets.size();
+        size_t fire = 0;
+        for (size_t s = 0; s < host_samples; ++s) {
+            // A boundary starts the next popped block; on a failed pop the
+            // phase keeps counting so the last frame stays held (clamped).
+            while (fire < fires && s >= t.downsample_offsets[fire]) {
+                for (size_t c = 0; c < num_ch; ++c)
+                    for (size_t j = 0; j < out_block; ++j)
+                        t.downsample_hold.set_sample(
+                            c, j, t.downsample_pop.get_sample(c, fire * out_block + j));
+                t.hold_phase = 0;
+                ++fire;
+            }
+            // Sample j of the block covers host time [j, j+1)*in_block/out_block
+            // after its boundary; hold each across its own sub-segment.
+            const size_t frame =
+                std::min(out_block - 1, (t.hold_phase * out_block) / in_block);
+            for (size_t c = 0; c < num_ch; ++c)
+                output_data[i][c][s] = t.downsample_hold.get_sample(c, frame);
+            ++t.hold_phase;
         }
     }
 }

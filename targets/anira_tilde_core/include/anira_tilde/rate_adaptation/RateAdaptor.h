@@ -21,16 +21,27 @@ namespace anira_tilde {
  * For each signal tensor we precompute a Kind:
  *   - Equal      — tensor runs at host rate. Pass the host buffer through
  *                  unchanged.
- *   - Upsample   — model input block is smaller than the host buffer
- *                  (input_size < output_size). Within each host block we
- *                  fire exactly one inference when we cross the next
- *                  output_size boundary; anira fills the larger output
- *                  buffer across subsequent callbacks.
- *   - Downsample — model input block is larger than the host buffer
+ *   - Upsample   — model input block is smaller than the model output block
+ *                  (input_size < output_size). One inference is due per
+ *                  output_size samples of host time: within each host block
+ *                  we gather one input block at every output_size boundary
+ *                  crossed (0, 1, or many, depending on how the host block
+ *                  compares to the output block) and feed them all to anira.
+ *                  Each of the input_size samples in a block represents
+ *                  output_size/input_size samples of host time (e.g. 8
+ *                  latent frames per 1024-sample block = one frame per 128
+ *                  samples), so the gather picks samples at that stride —
+ *                  not consecutively — from the boundary onward.
+ *   - Downsample — model input block is larger than the model output block
  *                  (input_size > output_size). We hand anira every host
- *                  input sample (it accumulates), and ask it to pop one
- *                  output sample into a 1-sample scratch buffer; we then
- *                  sample-and-hold that value across the host output.
+ *                  input sample (it accumulates; one inference completes per
+ *                  input_size samples) and pop one output block per
+ *                  input_size boundary crossed in this host block. Each of
+ *                  the output_size samples in a popped block represents
+ *                  input_size/output_size samples of host time, so it is
+ *                  sample-and-held across its own sub-segment (a phase
+ *                  counter carries partially-played blocks across host
+ *                  callbacks).
  */
 class ANIRA_TILDE_API RateAdaptor {
 public:
@@ -46,7 +57,10 @@ public:
         size_t*                    out_sample_counts;
     };
 
-    void prepare(const TensorLayout& layout, size_t host_buffer_size);
+    /// `max_block_size` is the largest per-call sample count process() will
+    /// see (model-domain when the session resamples); it bounds the upsample
+    /// gather scratch.
+    void prepare(const TensorLayout& layout, size_t max_block_size);
 
     bool is_active() const noexcept { return m_active; }
 
@@ -64,19 +78,15 @@ private:
     /// State for a single signal tensor pair. Only the slot matching `kind`
     /// is actually used; the others stay default-constructed (zero cost).
     struct PerTensor {
-        Kind                 kind         = Kind::Equal;
-        size_t               upsample_pos = 0;     // running input counter (Upsample)
-        anira::Buffer<float> downsample_hold;      // last seen output (Downsample)
-        anira::Buffer<float> downsample_pop;       // 1-sample scratch anira writes into (Downsample)
+        Kind                 kind       = Kind::Equal;
+        size_t               pos        = 0;       // running host-sample counter
+        size_t               max_fires  = 0;       // scratch capacity, in inferences
+        size_t               hold_phase = 0;       // host samples since the held block's boundary
+        std::vector<std::vector<float>> upsample_gather;  // per-channel gathered input blocks
+        anira::Buffer<float> downsample_hold;      // currently-playing output block (Downsample)
+        anira::Buffer<float> downsample_pop;       // pop scratch anira writes into (Downsample)
+        std::vector<size_t>  downsample_offsets;   // boundary offsets of this block's pops
     };
-
-    /// Returns the offset into this host block where the next inference
-    /// boundary falls, or std::nullopt if no boundary is crossed.
-    /// `pos` is the running input-sample counter for this tensor.
-    static bool next_inference_offset(size_t pos,
-                                      size_t output_block_size,
-                                      size_t host_samples,
-                                      size_t& out_offset) noexcept;
 
     std::vector<PerTensor> m_tensors;    // one per max(n_sig_in, n_sig_out)
     bool                   m_active = false;

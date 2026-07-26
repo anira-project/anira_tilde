@@ -17,6 +17,8 @@ all 32 output positions until the next inference fires.
 import os
 import torch
 
+from export_util import export_all
+
 
 class Downsampler(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -26,14 +28,8 @@ class Downsampler(torch.nn.Module):
 
 def main() -> None:
     model = Downsampler()
-    model.eval()
-
     example = torch.zeros(1, 1, 32)
-    traced = torch.jit.trace(model, (example,))
-
-    out_path = os.path.join(os.path.dirname(__file__), "downsampler_x32.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (example,), "downsampler_x32")
 
 
 if __name__ == "__main__":

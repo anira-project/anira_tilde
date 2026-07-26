@@ -1,7 +1,7 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "path/to/stateful-lstm-dynamic.tflite", "inference_backend": "TFLITE" }
+            { "model_path": "stateful-lstm-dynamic.tflite", "inference_backend": "LITERT" }
         ],
         "tensor_shape": [
             {

@@ -19,10 +19,33 @@ set(_test_json_bases
     upsample_multistate_test 40
     multichannel_out_test   40
     sine_oscillator_test    10
+    sine_oscillator_resampled_test 10
+    state_accumulator_resampled_test 10
 )
 # Absolute path to the test models, baked into each generated JSON so
 # anira's relative-path resolution finds them from the binary dir.
 set(MODELS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/models")
+
+# The suite runs on every backend compiled into anira: each fixture JSON is
+# configured once per enabled backend as <name>_<token>.json, pointing at the
+# matching model export (test/models/<model>.<ext> — regenerate all three
+# formats with the create_*.py scripts). TestBackends.h mirrors this list via
+# the USE_* compile definitions, so LibTorch coverage exists only when the
+# build opted in via ANIRA_WITH_LIBTORCH.
+set(_test_backends)
+if(ANIRA_WITH_EXECUTORCH)
+    list(APPEND _test_backends "EXECUTORCH:pte:executorch")
+endif()
+if(ANIRA_WITH_ONNXRUNTIME)
+    list(APPEND _test_backends "ONNX:onnx:onnx")
+endif()
+if(ANIRA_WITH_LIBTORCH)
+    list(APPEND _test_backends "LIBTORCH:pt:libtorch")
+endif()
+if(NOT _test_backends)
+    message(WARNING "anira_tilde tests: no supported inference backend enabled — "
+                    "the integration tests will have nothing to run on.")
+endif()
 
 list(LENGTH _test_json_bases _n)
 math(EXPR _last "${_n} - 1")
@@ -32,15 +55,22 @@ foreach(_i RANGE 0 ${_last} 2)
     list(GET _test_json_bases ${_j} _base)
     math(EXPR _v "${_base} + ${ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD}")
     set(${_name}_max_inference_time "${_v}.0")
-    configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/${_name}.json.in
-        ${CMAKE_CURRENT_BINARY_DIR}/${_name}.json
-        @ONLY
-    )
+    foreach(_bk IN LISTS _test_backends)
+        string(REPLACE ":" ";" _bk_parts "${_bk}")
+        list(GET _bk_parts 0 TEST_BACKEND)
+        list(GET _bk_parts 1 TEST_MODEL_EXT)
+        list(GET _bk_parts 2 _bk_token)
+        configure_file(
+            ${CMAKE_CURRENT_SOURCE_DIR}/${_name}.json.in
+            ${CMAKE_CURRENT_BINARY_DIR}/${_name}_${_bk_token}.json
+            @ONLY
+        )
+    endforeach()
 endforeach()
 
 add_executable(anira_tilde_tests
     test_state_pair_parser.cpp
+    test_resampling.cpp
     test_state_passing.cpp
     test_anira_processor.cpp
     test_rate_adaptation.cpp
@@ -50,15 +80,11 @@ add_executable(anira_tilde_tests
 
 target_compile_definitions(anira_tilde_tests PRIVATE
     ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS=${ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD}
-    STATE_TEST_MODEL_PATH="${CMAKE_SOURCE_DIR}/test/models/state_accumulator.pt"
-    SINE_OSC_MODEL_PATH="${CMAKE_SOURCE_DIR}/test/models/sine_oscillator.pt"
-    SINE_OSC_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/sine_oscillator_test.json"
+    # TestBackends.h builds fixture-JSON and model paths from these per test
+    # backend: <JSON_DIR>/<base>_<token>.json and <MODELS_DIR>/<model>.<ext>.
+    ANIRA_TILDE_TEST_JSON_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+    ANIRA_TILDE_TEST_MODELS_DIR="${MODELS_DIR}"
     SINE_OSC_RELATIVE_JSON_PATH="${CMAKE_CURRENT_SOURCE_DIR}/sine_oscillator_relative_test.json"
-    RATE_ADAPT_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/rate_adapt_test.json"
-    UPSAMPLE_STATE_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/upsample_state_test.json"
-    UPSAMPLE_MULTISTATE_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/upsample_multistate_test.json"
-    DOWNSAMPLE_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/downsample_test.json"
-    MULTICHANNEL_OUT_JSON_PATH="${CMAKE_CURRENT_BINARY_DIR}/multichannel_out_test.json"
 )
 
 target_link_libraries(anira_tilde_tests

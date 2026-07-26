@@ -1,7 +1,7 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "models/sine_oscillator.pt", "inference_backend": "LIBTORCH" }
+            { "model_path": "models/sine_oscillator.onnx", "inference_backend": "ONNX" }
         ],
         "tensor_shape": [
             {

@@ -24,6 +24,8 @@ import math
 import os
 import torch
 
+from export_util import export_all
+
 SIGNAL_SIZE = 512
 SAMPLE_RATE = 44100.0
 
@@ -42,18 +44,50 @@ class SineOscillator(torch.nn.Module):
         return audio_out, phase_out
 
 
+def export_tflite() -> None:
+    """TensorFlow twin of the same math, exported as sine_oscillator.tflite for
+    the LiteRT backend (there is no torch->tflite path for this graph; the ops
+    are trivial, so the duplication is a few lines). Skipped when tensorflow is
+    not installed — the committed .tflite only needs regenerating when the
+    model itself changes."""
+    try:
+        import tensorflow as tf
+    except ImportError:
+        print("tensorflow not installed - skipping sine_oscillator.tflite")
+        return
+
+    class SineOscillatorTF(tf.Module):
+        @tf.function(input_signature=[
+            tf.TensorSpec([1, 1, SIGNAL_SIZE], tf.float32),  # freq
+            tf.TensorSpec([1, 1], tf.float32),               # phase_in
+        ])
+        def __call__(self, freq, phase_in):
+            phase_increments = 2.0 * math.pi * freq / SAMPLE_RATE
+            cumulative = tf.cumsum(phase_increments, axis=2)
+            phases = tf.expand_dims(phase_in, -1) + cumulative
+            audio_out = tf.sin(phases)
+            phase_out = tf.math.floormod(phases[..., -1], 2.0 * math.pi)
+            # Named outputs with ordering prefixes: both the TFLite signature
+            # (alphabetical) and the graph's output tensor order follow these
+            # keys, and anira maps tensors by index — audio must stay tensor 0.
+            return {"out_0_audio": audio_out, "out_1_phase": phase_out}
+
+    module = SineOscillatorTF()
+    converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [module.__call__.get_concrete_function()], module)
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sine_oscillator.tflite")
+    with open(out, "wb") as f:
+        f.write(converter.convert())
+    print(f"Saved {out}")
+
+
 def main() -> None:
     model = SineOscillator()
-    model.eval()
-
     freq     = torch.full((1, 1, SIGNAL_SIZE), 440.0)
     phase_in = torch.zeros(1, 1)
 
-    traced = torch.jit.trace(model, (freq, phase_in))
-
-    out_path = os.path.join(os.path.dirname(__file__), "sine_oscillator.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (freq, phase_in), "sine_oscillator")
+    export_tflite()
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ so N=32: one inference every 32 audio output samples.
 import os
 import torch
 
+from export_util import export_all
+
 
 class Upsampler(torch.nn.Module):
     def __init__(self, factor: int) -> None:
@@ -29,14 +31,8 @@ class Upsampler(torch.nn.Module):
 def main() -> None:
     factor = 32
     model = Upsampler(factor)
-    model.eval()
-
     example = torch.zeros(1, 1, 1)
-    traced = torch.jit.trace(model, (example,))
-
-    out_path = os.path.join(os.path.dirname(__file__), "upsampler_x32.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (example,), "upsampler_x32")
 
 
 if __name__ == "__main__":

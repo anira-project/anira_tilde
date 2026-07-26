@@ -41,15 +41,16 @@ namespace {
     }
 }
 
-#ifdef __APPLE__
-// macOS: the libtorch-collision guard lives in a separate shim bundle that
-// dlopens this dylib and calls this C-linkage entry once it has cleared the
-// guard (see Guard.cpp / setup-target-anira-tilde.cmake).
+#ifdef ANIRA_TILDE_LIBTORCH_GUARD
+// macOS with the LibTorch backend: the libtorch-collision guard lives in a
+// separate shim bundle that dlopens this dylib and calls this C-linkage entry
+// once it has cleared the guard (see Guard.cpp / setup-target-anira-tilde.cmake,
+// which defines ANIRA_TILDE_LIBTORCH_GUARD on the impl target).
 extern "C" __attribute__((visibility("default"))) void anira_tilde_impl_main(void* r) {
     register_anira(r);
 }
 #else
-// Other platforms load this module (anira~) directly.
+// No guard needed: Max loads this module (anira~) directly.
 void ext_main(void* r) {
     register_anira(r);
 }

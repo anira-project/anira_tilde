@@ -41,7 +41,7 @@ void Engine::prepare(size_t host_buffer_size, double host_sample_rate) {
         const TensorLayout& layout = m_session->layout();
         const size_t effective_buffer_size = compute_effective_buffer_size(
             layout.input_block_sizes, layout.output_block_sizes, host_buffer_size);
-        m_session->prepare(effective_buffer_size, host_sample_rate);
+        m_session->prepare(effective_buffer_size, host_sample_rate, host_buffer_size);
         latency = static_cast<float>(m_session->get_latency_samples());
         prepare_audio_buffers();
     }

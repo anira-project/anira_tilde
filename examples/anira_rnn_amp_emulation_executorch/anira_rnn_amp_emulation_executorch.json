@@ -1,0 +1,14 @@
+{
+    "inference_config": {
+        "model_data": [
+            { "model_path": "stateful-lstm-executorch.pte", "inference_backend": "EXECUTORCH" }
+        ],
+        "tensor_shape": [
+            {
+                "input_shape": [[2048, 1, 1]],
+                "output_shape": [[2048, 1, 1]]
+            }
+        ],
+        "max_inference_time": 63.1
+    }
+}

@@ -22,8 +22,8 @@ For every signal tensor, `anira~` classifies the relationship between
 | Relationship | Classification | Behaviour |
 |---|---|---|
 | `input_size == output_size` | **Equal** | tensor runs at host rate; pass straight through. |
-| `input_size <  output_size` | **Upsample** | latent → audio decoder; one inference fires per output-size boundary, anira drains the larger output across following callbacks. |
-| `input_size >  output_size` | **Downsample** | audio → latent encoder; anira accumulates `input_size` host samples, pops one output value, sample-and-holds it across the host buffer. |
+| `input_size <  output_size` | **Upsample** | latent → audio decoder; one inference fires per `output_size` boundary of host time — zero, one, or several per callback, depending on how the host buffer compares to the model's output block. |
+| `input_size >  output_size` | **Downsample** | audio → latent encoder; anira accumulates `input_size` host samples per inference, and one output block is popped per `input_size` boundary; each popped frame is sample-and-held across its own sub-segment of the host stream. |
 
 **Constraints:**
 
@@ -34,6 +34,31 @@ For every signal tensor, `anira~` classifies the relationship between
   rate) can't be represented purely by the size fields; they'd need an
   explicit `inference_period_samples` field which isn't currently
   implemented.
+
+## Multi-frame blocks
+
+A model block may carry several frames of the slower stream. The RAVE
+exports are the canonical case: the decoder consumes `[1, 2, 8]` — 8
+latent frames per 1024 output samples, one frame per `1024/8 = 128`
+samples of host time. The adaptor preserves that per-frame timing:
+
+- **Upsample gather** — frame `j` of an input block is picked from the
+  host signal at `boundary + j * output_size / input_size`, i.e. at the
+  frame stride, not consecutively. Consecutive picking would hand the
+  model 8 copies of one latent value.
+- **Downsample hold** — frame `j` of a popped output block is held across
+  host samples `[j, j+1) * input_size / output_size` after its boundary.
+  A phase counter carries a partially-played block across callback
+  boundaries, so segment alignment survives any host buffer size.
+
+With one frame per block both rules reduce to the plain
+gather-at-boundary / sample-and-hold behaviour.
+
+Rate adaptation is about **block sizes**, not sample rates: a model
+trained at a fixed sample rate additionally declares
+[`resampler_config`](json-config-reference.md#resampler_config-optional),
+which wraps the whole pipeline (rate adaptor included) in a host ↔ model
+sample-rate conversion.
 
 ## Why this matters
 
@@ -52,7 +77,8 @@ owns:
 
 - The per-tensor `Kind` enum (precomputed at `prepare()` time).
 - The "view" arrays that re-present the host's pointers to anira each block.
-- The 1-sample scratch + S&H state used by the downsample path.
+- The gather scratch (upsample) and the pop scratch + currently-playing
+  block + phase counter (downsample).
 
 `Session::process` drives it in three phases:
 

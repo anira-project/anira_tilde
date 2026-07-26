@@ -17,6 +17,8 @@ by the number of output *channels* (4), so channels >= 1 wrote out of bounds.
 import os
 import torch
 
+from export_util import export_all
+
 CHANNELS = 4
 
 
@@ -28,14 +30,8 @@ class MultiChannelOut(torch.nn.Module):
 
 def main() -> None:
     model = MultiChannelOut()
-    model.eval()
-
     example = torch.zeros(1, 1, 1)
-    traced = torch.jit.trace(model, (example,))
-
-    out_path = os.path.join(os.path.dirname(__file__), "multichannel_out.pt")
-    traced.save(out_path)
-    print(f"Saved {out_path}")
+    export_all(model, (example,), "multichannel_out")
 
 
 if __name__ == "__main__":
