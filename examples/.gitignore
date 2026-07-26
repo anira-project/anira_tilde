@@ -5,3 +5,4 @@
 *.tflite
 *.ts
 *.pt
+.example-models-version
