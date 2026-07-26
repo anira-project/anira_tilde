@@ -42,12 +42,10 @@
 
 ## Upstream anira issues to follow up
 
-- [ ] **UBSan: `InferenceConfig::get_tensor_shape` reads uninitialized `m_backend`** —
-  `modules/anira/src/InferenceConfig.cpp:213` loads a `TensorShape::m_backend`
-  field that isn't always initialized. UBSan flags it as an invalid enum value.
-  Worked around in CI by passing `-fno-sanitize=enum`; the real fix is to default-
-  initialize `m_backend` (or initialize the full `TensorShape` in its constructor)
-  upstream in anira.
+- [x] **UBSan: `InferenceConfig::get_tensor_shape` reads uninitialized `m_backend`** —
+  fixed upstream on `feat/executorch-support`: `TensorShape::m_backend` is now
+  default-initialized (the universal constructor used to leave it uninitialized).
+  The `-fno-sanitize=enum` workaround is removed from `cmake/sanitizers.cmake`.
 
 ## Housekeeping
 
