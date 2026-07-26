@@ -12,28 +12,27 @@
                     [
                         1,
                         1,
-                        2048
+                        128
                     ],
                     [
                         1,
-                        30272
+                        161600
                     ],
                     [
                         1,
-                        2,
-                        16,
-                        64
+                        14,
+                        1
                     ]
                 ],
                 "output_shape": [
                     [
                         1,
                         1,
-                        2048
+                        128
                     ],
                     [
                         1,
-                        30272
+                        161600
                     ]
                 ]
             }
@@ -49,16 +48,16 @@
                 1
             ],
             "preprocess_input_size": [
-                2048,
+                128,
                 0,
                 0
             ],
             "postprocess_output_size": [
-                2048,
+                128,
                 0
             ]
         },
-        "max_inference_time": 63.1
+        "max_inference_time": 6.0
     },
     "state_config": {
         "state_pairs": [
