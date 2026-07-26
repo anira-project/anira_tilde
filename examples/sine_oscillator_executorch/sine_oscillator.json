@@ -1,25 +1,67 @@
 {
     "inference_config": {
         "model_data": [
-            { "model_path": "../../test/models/sine_oscillator.pte", "inference_backend": "EXECUTORCH" }
+            {
+                "model_path": "../../test/models/sine_oscillator.pte",
+                "inference_backend": "EXECUTORCH"
+            }
         ],
         "tensor_shape": [
             {
-                "input_shape":  [[1, 1, 512], [1, 1]],
-                "output_shape": [[1, 1, 512], [1, 1]]
+                "input_shape": [
+                    [
+                        1,
+                        1,
+                        512
+                    ],
+                    [
+                        1,
+                        1
+                    ]
+                ],
+                "output_shape": [
+                    [
+                        1,
+                        1,
+                        512
+                    ],
+                    [
+                        1,
+                        1
+                    ]
+                ]
             }
         ],
         "processing_spec": {
-            "preprocess_input_channels":   [1, 1],
-            "postprocess_output_channels": [1, 1],
-            "preprocess_input_size":       [512, 0],
-            "postprocess_output_size":     [512, 0]
+            "preprocess_input_channels": [
+                1,
+                1
+            ],
+            "postprocess_output_channels": [
+                1,
+                1
+            ],
+            "preprocess_input_size": [
+                512,
+                0
+            ],
+            "postprocess_output_size": [
+                512,
+                0
+            ]
         },
         "max_inference_time": 10.0
     },
     "state_config": {
         "state_pairs": [
-            { "output_tensor": 1, "input_tensor": 1 }
+            {
+                "output_tensor": 1,
+                "input_tensor": 1
+            }
         ]
+    },
+    "resampler_config": {
+        "model_sample_rate": 44100,
+        "quality": "sinc_fastest"
     }
 }

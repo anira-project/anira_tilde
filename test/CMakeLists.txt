@@ -19,6 +19,8 @@ set(_test_json_bases
     upsample_multistate_test 40
     multichannel_out_test   40
     sine_oscillator_test    10
+    sine_oscillator_resampled_test 10
+    state_accumulator_resampled_test 10
 )
 # Absolute path to the test models, baked into each generated JSON so
 # anira's relative-path resolution finds them from the binary dir.
@@ -68,6 +70,7 @@ endforeach()
 
 add_executable(anira_tilde_tests
     test_state_pair_parser.cpp
+    test_resampling.cpp
     test_state_passing.cpp
     test_anira_processor.cpp
     test_rate_adaptation.cpp

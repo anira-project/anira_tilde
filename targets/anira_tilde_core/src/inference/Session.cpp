@@ -1,6 +1,7 @@
 #include "anira_tilde/inference/Session.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
@@ -80,7 +81,8 @@ Session::Session(std::string json_config_path) :
     m_state_pairs(parse_state_pairs(json_config_path)),
     m_pp_processor(m_inference_config, m_state_pairs),
     m_inference_handler(m_pp_processor, m_inference_config),
-    m_layout(TensorLayout::from(m_inference_config, m_state_pairs))
+    m_layout(TensorLayout::from(m_inference_config, m_state_pairs)),
+    m_resampler_config(parse_resampler_config(json_config_path))
 {}
 
 namespace {
@@ -104,13 +106,36 @@ std::optional<DecoderLatency> compute_decoder_latency(const TensorLayout& layout
 
 } // namespace
 
-void Session::prepare(size_t buffer_size, double sample_rate) {
+void Session::prepare(size_t buffer_size, double sample_rate, size_t max_host_block) {
+    if (max_host_block == 0) { max_host_block = buffer_size; }
+    // Sample-rate conversion: active when the config declares a model rate
+    // that differs from the host rate. The whole pipeline below (rate
+    // adaptation + anira) then runs in the MODEL-rate domain; the resamplers
+    // form a host<->model shim at the Session boundary. Latent/state tensors
+    // are per-inference data and never touch the resamplers.
+    m_resampling = m_resampler_config.model_sample_rate > 0.0 &&
+                   std::abs(m_resampler_config.model_sample_rate - sample_rate) > 1e-6;
+    m_model_per_host = m_resampling
+        ? m_resampler_config.model_sample_rate / sample_rate
+        : 1.0;
+
+    // Model-domain block size the pipeline sees per host callback (±1 sample
+    // of jitter absorbed by anira's rings; allow_smaller_buffers covers the
+    // short blocks).
+    const size_t model_buffer = m_resampling
+        ? static_cast<size_t>(std::ceil(static_cast<double>(buffer_size) * m_model_per_host))
+        : buffer_size;
+    const double pipeline_rate = m_resampling
+        ? m_resampler_config.model_sample_rate
+        : sample_rate;
+
     anira::HostConfig host_config {
-        static_cast<float>(buffer_size),
-        static_cast<float>(sample_rate),
+        static_cast<float>(model_buffer),
+        static_cast<float>(pipeline_rate),
+        /*allow_smaller_buffers=*/m_resampling,
     };
 
-    if (const auto dl = compute_decoder_latency(m_layout, buffer_size)) {
+    if (const auto dl = compute_decoder_latency(m_layout, model_buffer)) {
         m_inference_handler.prepare(host_config, dl->samples, dl->tensor_index);
     } else {
         m_inference_handler.prepare(host_config);
@@ -124,16 +149,82 @@ void Session::prepare(size_t buffer_size, double sample_rate) {
         : m_inference_config.m_model_data.front().m_backend;
     m_inference_handler.set_inference_backend(m_selected_backend);
 
-    m_rate_adaptor.prepare(m_layout, buffer_size);
+    m_rate_adaptor.prepare(m_layout, model_buffer);
+
+    if (m_resampling) {
+        // process() receives up to max_host_block samples per streamable
+        // tensor per call (NOT buffer_size, which is the inference-pacing
+        // block — 1 for a decoder); size every conversion buffer for that.
+        const size_t scratch_cap =
+            static_cast<size_t>(std::ceil(static_cast<double>(max_host_block) *
+                                          m_model_per_host)) + 16;
+        const size_t n_in  = m_layout.input_block_sizes.size();
+        const size_t n_out = m_layout.output_block_sizes.size();
+
+        m_in_resamplers.clear();
+        m_in_resamplers.resize(n_in);
+        m_in_scratch.assign(n_in, {});
+        m_in_scratch_ptrs.assign(n_in, {});
+        m_in_views.assign(n_in, nullptr);
+        m_model_in_counts.assign(n_in, 0);
+        for (size_t t = 0; t < n_in; ++t) {
+            if (m_layout.input_block_sizes[t] == 0) continue;  // state/message tensor
+            const size_t channels = m_layout.sig_input_channels[t];
+            m_in_resamplers[t].prepare(sample_rate,
+                                       m_resampler_config.model_sample_rate,
+                                       channels,
+                                       m_resampler_config.quality_for_input(t),
+                                       max_host_block);
+            m_in_scratch[t].assign(channels, std::vector<float>(scratch_cap, 0.0f));
+            m_in_scratch_ptrs[t].resize(channels);
+            for (size_t c = 0; c < channels; ++c)
+                m_in_scratch_ptrs[t][c] = m_in_scratch[t][c].data();
+        }
+
+        m_out_resamplers.clear();
+        m_out_resamplers.resize(n_out);
+        m_out_scratch.assign(n_out, {});
+        m_out_scratch_ptrs.assign(n_out, {});
+        m_out_views.assign(n_out, nullptr);
+        m_model_out_counts.assign(n_out, 0);
+        m_out_accum.assign(n_out, 0.0);
+        for (size_t t = 0; t < n_out; ++t) {
+            if (m_layout.output_block_sizes[t] == 0) continue;
+            const size_t channels = m_layout.sig_output_channels[t];
+            m_out_resamplers[t].prepare(m_resampler_config.model_sample_rate,
+                                        sample_rate,
+                                        channels,
+                                        m_resampler_config.quality_for_output(t),
+                                        scratch_cap,
+                                        /*exact_output_block=*/max_host_block);
+            m_out_scratch[t].assign(channels, std::vector<float>(scratch_cap, 0.0f));
+            m_out_scratch_ptrs[t].resize(channels);
+            for (size_t c = 0; c < channels; ++c)
+                m_out_scratch_ptrs[t][c] = m_out_scratch[t][c].data();
+        }
+    }
 }
 
 size_t Session::get_latency_samples()
 {
-    return m_inference_handler.get_latency();
+    const size_t pipeline_latency = m_inference_handler.get_latency();
+    if (!m_resampling) return pipeline_latency;
+
+    // The input resampler is free-running and timeline-aligned: zero stream
+    // latency. The pipeline latency converts model → host; the output
+    // resampler's exact-mode priming deficit is already in host samples.
+    size_t out_latency = 0;
+    for (const auto& r : m_out_resamplers)
+        if (r.is_prepared()) { out_latency = r.output_latency(); break; }
+
+    const double host_per_model = 1.0 / m_model_per_host;
+    return static_cast<size_t>(
+               std::ceil(static_cast<double>(pipeline_latency) * host_per_model)) +
+           out_latency;
 }
 
-void Session::process(const float* const* const* input_data,  size_t* num_input_samples,
-                      float* const* const*       output_data, size_t* num_output_samples)
+void Session::run_pipeline(const float* const* const* input_data,  size_t* num_input_samples,
+                           float* const* const*       output_data, size_t* num_output_samples)
 {
     const auto v = m_rate_adaptor.pre_dispatch(m_layout,
                                                input_data,  num_input_samples,
@@ -150,6 +241,61 @@ void Session::process(const float* const* const* input_data,  size_t* num_input_
     }
 
     m_rate_adaptor.post_dispatch(m_layout, output_data, num_output_samples);
+}
+
+void Session::process(const float* const* const* input_data,  size_t* num_input_samples,
+                      float* const* const*       output_data, size_t* num_output_samples)
+{
+    if (!m_resampling) {
+        run_pipeline(input_data, num_input_samples, output_data, num_output_samples);
+        return;
+    }
+
+    // Host -> model: convert every streamable input tensor into its scratch;
+    // state/message tensors pass through untouched (their counts are 0).
+    const size_t n_in = m_layout.input_block_sizes.size();
+    for (size_t t = 0; t < n_in; ++t) {
+        if (m_layout.input_block_sizes[t] == 0 || num_input_samples[t] == 0) {
+            m_in_views[t] = input_data[t];
+            m_model_in_counts[t] = num_input_samples[t];
+            continue;
+        }
+        const size_t produced = m_in_resamplers[t].process(input_data[t],
+                                                           num_input_samples[t],
+                                                           m_in_scratch_ptrs[t].data(),
+                                                           m_in_scratch[t][0].size());
+        m_in_views[t] = m_in_scratch_ptrs[t].data();
+        m_model_in_counts[t] = produced;
+    }
+
+    // Model-domain pop counts: Bresenham pacing keeps the long-run pull rate
+    // exactly host*model_per_host samples without drift.
+    const size_t n_out = m_layout.output_block_sizes.size();
+    for (size_t t = 0; t < n_out; ++t) {
+        if (m_layout.output_block_sizes[t] == 0 || num_output_samples[t] == 0) {
+            m_out_views[t] = output_data[t];
+            m_model_out_counts[t] = num_output_samples[t];
+            continue;
+        }
+        m_out_accum[t] += static_cast<double>(num_output_samples[t]) * m_model_per_host;
+        const size_t want = static_cast<size_t>(m_out_accum[t]);
+        m_out_accum[t] -= static_cast<double>(want);
+        m_out_views[t] = m_out_scratch_ptrs[t].data();
+        m_model_out_counts[t] = want;
+    }
+
+    run_pipeline(m_in_views.data(), m_model_in_counts.data(),
+                 m_out_views.data(), m_model_out_counts.data());
+
+    // Model -> host: every streamable output tensor must fill the host buffer
+    // exactly.
+    for (size_t t = 0; t < n_out; ++t) {
+        if (m_layout.output_block_sizes[t] == 0 || num_output_samples[t] == 0) continue;
+        m_out_resamplers[t].process_exact(m_out_scratch_ptrs[t].data(),
+                                          m_model_out_counts[t],
+                                          output_data[t],
+                                          num_output_samples[t]);
+    }
 }
 
 void Session::set_input(float input, size_t tensor_index, size_t channel) {

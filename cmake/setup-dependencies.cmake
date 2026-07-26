@@ -26,6 +26,30 @@ endif()
 add_subdirectory(modules/min-lib)
 
 # ------------------------------------------------------------------------------
+# libsamplerate: real-time sample-rate conversion between the host rate and the
+# model's native rate (resampler_config.model_sample_rate in the JSON configs).
+# Static, linked into anira_tilde_core; src_process() allocates nothing after
+# src_new(), so the audio-thread path stays real-time safe.
+# ------------------------------------------------------------------------------
+include(FetchContent)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(LIBSAMPLERATE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LIBSAMPLERATE_INSTALL OFF CACHE BOOL "" FORCE)
+# The 0.2.2 release's cmake_minimum_required predates CMake 4's compatibility
+# floor; opt its subproject into the modern policy baseline.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+FetchContent_Declare(
+    libsamplerate
+    GIT_REPOSITORY https://github.com/libsndfile/libsamplerate.git
+    GIT_TAG 0.2.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(libsamplerate)
+unset(CMAKE_POLICY_VERSION_MINIMUM)
+# Linked into shared impl dylibs / .mxo bundles on every platform.
+set_target_properties(samplerate PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ------------------------------------------------------------------------------
 # anira backend selection and linkage. Everything is bundled INSIDE the
 # externals: BUILD_SHARED_LIBS=OFF makes libanira static, and the ONNX
 # Runtime / LiteRT / ExecuTorch backends follow it into the same archive

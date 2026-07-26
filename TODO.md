@@ -40,6 +40,17 @@
   or register the path via an "App Paths" registry key. This is the standard
   "side-loading" pattern Windows audio plugins use for heavy shared dependencies.
 
+## Resampler follow-ups
+
+- [x] **Internal sample-rate conversion** — done: `resampler_config.model_sample_rate`
+  in the JSON converts every streamable tensor host→model and back (libsamplerate,
+  real-time safe, per-tensor `quality` overrides incl. `"hold"` for latent streams;
+  latency reported sample-accurately, verified by an impulse test). Encoder/decoder
+  configs use `"hold"` on the latent tensor: exact fractional pacing, values
+  preserved, zero latency.
+- [ ] **Consider mirroring `model_sample_rate` upstream in anira's InferenceConfig**
+  as declared model metadata (so non-tilde hosts can at least warn on mismatch).
+
 ## Upstream anira issues to follow up
 
 - [x] **UBSan: `InferenceConfig::get_tensor_shape` reads uninitialized `m_backend`** —

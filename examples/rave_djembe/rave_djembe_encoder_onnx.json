@@ -59,5 +59,12 @@
                 "input_tensor": 1
             }
         ]
+    },
+    "resampler_config": {
+        "model_sample_rate": 44100,
+        "quality": "sinc_fastest",
+        "output_quality": {
+            "0": "hold"
+        }
     }
 }
