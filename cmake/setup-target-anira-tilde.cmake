@@ -24,6 +24,22 @@
 
 set(_max_dir ${CMAKE_CURRENT_SOURCE_DIR}/targets/anira_tilde)
 
+# Max resolves an external through one exported entry point; every other
+# exported symbol is a liability. Our TUs reach ORT's C++ header through
+# anira's OnnxRuntimeProcessor header and emit Ort::Global<void>::api_ as a
+# weak external, and a host that ships its own ONNX Runtime (Ableton Live 12
+# bundles one — relevant under Max for Live) exports the same weak symbol, so
+# dyld coalesces the two copies and Ort::GetApi() can resolve against the
+# host's mismatched runtime (see anira 7b9d1ac, which hides anira's own copy
+# but cannot reach the ones our TUs emit). Restrict Mach-O exports to the
+# entry point so those weak definitions stay private. COFF only exports
+# dllexport symbols, so Windows needs nothing.
+function(anira_tilde_export_only target entrypoint)
+    if(APPLE)
+        target_link_options(${target} PRIVATE "LINKER:-exported_symbol,_${entrypoint}")
+    endif()
+endfunction()
+
 if(APPLE AND ANIRA_WITH_LIBTORCH)
     # Audio/Jitter frameworks are normally linked by max-posttarget; the impl
     # dylibs bypass that machinery, so locate them once and link explicitly.
@@ -48,6 +64,7 @@ if(APPLE AND ANIRA_WITH_LIBTORCH)
         # the sources switch on this define.
         target_compile_definitions(${target} PRIVATE ANIRA_TILDE_LIBTORCH_GUARD)
         anira_tilde_apply_cxx_standard(${target})
+        anira_tilde_export_only(${target} ${target}_main)
 
         # Sits next to the .mxo shims (which min-posttarget drops in
         # CMAKE_LIBRARY_OUTPUT_DIRECTORY) so Guard.cpp can dlopen it by relative
@@ -84,6 +101,7 @@ if(APPLE AND ANIRA_WITH_LIBTORCH)
     )
 
     anira_tilde_apply_cxx_standard(${PROJECT_NAME})
+    anira_tilde_export_only(${PROJECT_NAME} ext_main)
 
     add_dependencies(${PROJECT_NAME} anira_tilde_impl mc_anira_tilde_impl)
 
@@ -123,6 +141,7 @@ else()
 
     target_link_libraries(${PROJECT_NAME} PRIVATE anira_tilde_core)
     anira_tilde_apply_cxx_standard(${PROJECT_NAME})
+    anira_tilde_export_only(${PROJECT_NAME} ext_main)
 
     include(${C74_MIN_SCRIPT_DIR}/min-posttarget.cmake)
 
@@ -140,6 +159,7 @@ else()
     )
     target_link_libraries(mc_anira_tilde PRIVATE anira_tilde_core)
     anira_tilde_apply_cxx_standard(mc_anira_tilde)
+    anira_tilde_export_only(mc_anira_tilde ext_main)
 
     # min-posttarget (via max-posttarget) links the Max import libraries into
     # ${PROJECT_NAME} only. Windows resolves all symbols at link time, so
