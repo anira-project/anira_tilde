@@ -27,7 +27,7 @@ public:
     Engine() = default;
     ~Engine() = default;
 
-    Engine(const Engine&)            = delete;
+    Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
     /// Load a JSON config and bring the underlying Session online.
@@ -41,44 +41,49 @@ public:
     const TensorLayout& layout() const;
 
     // --- Lifecycle -------------------------------------------------------
-    void   prepare(size_t host_buffer_size, double host_sample_rate);
-    bool   ready() const noexcept { return m_ready.load(std::memory_order_acquire); }
+    void prepare(size_t host_buffer_size, double host_sample_rate);
+    bool ready() const noexcept { return m_ready.load(std::memory_order_acquire); }
     size_t latency_samples() const;
 
     // --- Block processing (float-native) --------------------------------
-    void process(const float* const* input,  size_t num_input_channels,
-                 float* const*       output, size_t num_output_channels,
+    void process(const float* const* input,
+                 size_t num_input_channels,
+                 float* const* output,
+                 size_t num_output_channels,
                  size_t sample_count);
 
     // --- Non-streamable (message) tensor accessors -----------------------
-    void  set_message_input (size_t tensor_index, const std::vector<float>& values);
+    void set_message_input(size_t tensor_index, const std::vector<float>& values);
     float get_message_output(size_t tensor_index, size_t channel);
 
 private:
     void prepare_audio_buffers();
     void process_anira();
-    void write_output(const float* const* input,  size_t num_input_channels,
-                      float* const*       output, size_t num_output_channels,
-                      size_t sample_count, bool ready,
+    void write_output(const float* const* input,
+                      size_t num_input_channels,
+                      float* const* output,
+                      size_t num_output_channels,
+                      size_t sample_count,
+                      bool ready,
                       const TensorLayout& layout);
 
     std::unique_ptr<Session> m_session;
 
-    std::vector<anira::Buffer<float>>  m_input_buffers;
-    std::vector<anira::Buffer<float>>  m_output_buffers;
+    std::vector<anira::Buffer<float>> m_input_buffers;
+    std::vector<anira::Buffer<float>> m_output_buffers;
 
-    std::vector<const float* const*>   m_input_tensor_ptrs;
-    std::vector<float* const*>         m_output_tensor_ptrs;
+    std::vector<const float* const*> m_input_tensor_ptrs;
+    std::vector<float* const*> m_output_tensor_ptrs;
 
-    std::vector<size_t>  m_input_sample_counts;
-    std::vector<size_t>  m_output_sample_counts;
+    std::vector<size_t> m_input_sample_counts;
+    std::vector<size_t> m_output_sample_counts;
 
     // Per-output-channel cache of the last valid wet sample, used when a
     // rate-adapted model returns no new samples for a block (wet_period == 0).
-    std::vector<float>   m_last_wet;
+    std::vector<float> m_last_wet;
 
-    size_t            m_host_buffer_size = 0;
+    size_t m_host_buffer_size = 0;
     std::atomic<bool> m_ready{false};
 };
 
-} // namespace anira_tilde
+}  // namespace anira_tilde

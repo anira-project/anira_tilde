@@ -1,13 +1,15 @@
 #include "anira_tilde/resampling/Resampler.h"
 
+#include <samplerate.h>
+
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
-
-#include <samplerate.h>
+#include <utility>
+#include <vector>
 
 namespace anira_tilde {
 
@@ -50,7 +52,7 @@ size_t measure_exact_streaming_latency(int converter, double ratio, size_t block
     size_t stable = 0;
     for (int i = 0; i < 64 && stable < 2; ++i) {
         accum += static_cast<double>(block) / ratio;
-        const size_t n_in = static_cast<size_t>(accum);
+        const auto n_in = static_cast<size_t>(accum);
         accum -= static_cast<double>(n_in);
 
         SRC_DATA data{};
@@ -61,7 +63,7 @@ size_t measure_exact_streaming_latency(int converter, double ratio, size_t block
         data.src_ratio = ratio;
         data.end_of_input = 0;
         if (src_process(state, &data) != 0) { break; }
-        const size_t gen = static_cast<size_t>(data.output_frames_gen);
+        const auto gen = static_cast<size_t>(data.output_frames_gen);
         // Note: unconsumed probe input is deliberately dropped between
         // iterations; the paced feed keeps the converter input-starved exactly
         // like the real stream, and src_process consumes greedily anyway.
@@ -75,13 +77,13 @@ size_t measure_exact_streaming_latency(int converter, double ratio, size_t block
 }  // namespace
 
 struct Resampler::ChannelState {
-    SRC_STATE* state = nullptr;
-    std::vector<float> pending;  ///< retained unconsumed input frames
-    size_t pending_count = 0;
-    std::vector<float> feed;  ///< contiguous pending + fresh input scratch
+    SRC_STATE* m_state = nullptr;
+    std::vector<float> m_pending;  ///< retained unconsumed input frames
+    size_t m_pending_count = 0;
+    std::vector<float> m_feed;  ///< contiguous pending + fresh input scratch
 
     ~ChannelState() {
-        if (state != nullptr) { src_delete(state); }
+        if (m_state != nullptr) { src_delete(m_state); }
     }
 };
 
@@ -100,8 +102,8 @@ void Resampler::prepare(double src_rate,
     m_ratio = dst_rate / src_rate;
     m_converter = to_src_converter(quality);
     m_latency = exact_output_block > 0
-        ? measure_exact_streaming_latency(m_converter, m_ratio, exact_output_block)
-        : 0;
+                    ? measure_exact_streaming_latency(m_converter, m_ratio, exact_output_block)
+                    : 0;
 
     // Retained input stays small (SRC consumes greedily), but size generously:
     // one full block plus filter headroom.
@@ -112,18 +114,18 @@ void Resampler::prepare(double src_rate,
     for (size_t c = 0; c < channels; ++c) {
         auto ch = std::make_unique<ChannelState>();
         int error = 0;
-        ch->state = src_new(m_converter, 1, &error);
+        ch->m_state = src_new(m_converter, 1, &error);
         check_src(error, "src_new");
-        ch->pending.assign(pending_cap, 0.0F);
-        ch->feed.assign(pending_cap + max_input_block, 0.0F);
+        ch->m_pending.assign(pending_cap, 0.0F);
+        ch->m_feed.assign(pending_cap + max_input_block, 0.0F);
         m_channels.push_back(std::move(ch));
     }
 }
 
 void Resampler::reset() {
     for (auto& ch : m_channels) {
-        src_reset(ch->state);
-        ch->pending_count = 0;
+        src_reset(ch->m_state);
+        ch->m_pending_count = 0;
     }
 }
 
@@ -135,29 +137,29 @@ size_t Resampler::run_channel(size_t channel_index,
     ChannelState& ch = *m_channels[channel_index];
 
     // Contiguous view: retained frames first, fresh input after.
-    const size_t total = ch.pending_count + n_in;
-    assert(total <= ch.feed.size() && "Resampler fed more than max_input_block");
-    if (ch.pending_count > 0) {
-        std::memcpy(ch.feed.data(), ch.pending.data(), ch.pending_count * sizeof(float));
+    const size_t total = ch.m_pending_count + n_in;
+    assert(total <= ch.m_feed.size() && "Resampler fed more than max_input_block");
+    if (ch.m_pending_count > 0) {
+        std::memcpy(ch.m_feed.data(), ch.m_pending.data(), ch.m_pending_count * sizeof(float));
     }
-    if (n_in > 0) { std::memcpy(ch.feed.data() + ch.pending_count, in, n_in * sizeof(float)); }
+    if (n_in > 0) { std::memcpy(ch.m_feed.data() + ch.m_pending_count, in, n_in * sizeof(float)); }
 
     SRC_DATA data{};
-    data.data_in = ch.feed.data();
+    data.data_in = ch.m_feed.data();
     data.input_frames = static_cast<long>(total);
     data.data_out = out;
     data.output_frames = static_cast<long>(max_out);
     data.src_ratio = m_ratio;
     data.end_of_input = 0;
-    check_src(src_process(ch.state, &data), "src_process");
+    check_src(src_process(ch.m_state, &data), "src_process");
 
-    const size_t used = static_cast<size_t>(data.input_frames_used);
+    const auto used = static_cast<size_t>(data.input_frames_used);
     const size_t remaining = total - used;
-    assert(remaining <= ch.pending.size());
+    assert(remaining <= ch.m_pending.size());
     if (remaining > 0) {
-        std::memmove(ch.pending.data(), ch.feed.data() + used, remaining * sizeof(float));
+        std::memmove(ch.m_pending.data(), ch.m_feed.data() + used, remaining * sizeof(float));
     }
-    ch.pending_count = remaining;
+    ch.m_pending_count = remaining;
 
     return static_cast<size_t>(data.output_frames_gen);
 }

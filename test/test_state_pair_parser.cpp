@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
+
 #include <sstream>
+
 #include "anira_tilde/state_passing/StatePairParser.h"
 
 using namespace anira_tilde;
@@ -40,8 +42,8 @@ TEST(ParseStatePairs, SinglePair) {
     })");
     auto pairs = parse_state_pairs(ss);
     ASSERT_EQ(pairs.size(), 1u);
-    EXPECT_EQ(pairs[0].output_tensor, 1u);
-    EXPECT_EQ(pairs[0].input_tensor, 2u);
+    EXPECT_EQ(pairs[0].m_output_tensor, 1u);
+    EXPECT_EQ(pairs[0].m_input_tensor, 2u);
 }
 
 TEST(ParseStatePairs, MultiplePairs) {
@@ -55,10 +57,10 @@ TEST(ParseStatePairs, MultiplePairs) {
     })");
     auto pairs = parse_state_pairs(ss);
     ASSERT_EQ(pairs.size(), 2u);
-    EXPECT_EQ(pairs[0].output_tensor, 1u);
-    EXPECT_EQ(pairs[0].input_tensor, 2u);
-    EXPECT_EQ(pairs[1].output_tensor, 3u);
-    EXPECT_EQ(pairs[1].input_tensor, 4u);
+    EXPECT_EQ(pairs[0].m_output_tensor, 1u);
+    EXPECT_EQ(pairs[0].m_input_tensor, 2u);
+    EXPECT_EQ(pairs[1].m_output_tensor, 3u);
+    EXPECT_EQ(pairs[1].m_input_tensor, 4u);
 }
 
 TEST(ParseStatePairs, PairMissingOutputTensor) {
@@ -97,8 +99,8 @@ TEST(ParseStatePairs, SkipsMalformedPairAmongValid) {
     })");
     auto pairs = parse_state_pairs(ss);
     ASSERT_EQ(pairs.size(), 2u);
-    EXPECT_EQ(pairs[0].output_tensor, 1u);
-    EXPECT_EQ(pairs[1].output_tensor, 5u);
+    EXPECT_EQ(pairs[0].m_output_tensor, 1u);
+    EXPECT_EQ(pairs[1].m_output_tensor, 5u);
 }
 
 // ---- parse_state_pairs(path) ----

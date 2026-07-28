@@ -1,7 +1,13 @@
 #include <gtest/gtest.h>
-#include <thread>
+
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <numbers>
+#include <thread>
+#include <vector>
+
 #include "TestBackends.h"
 #include "anira_tilde/inference/Session.h"
 
@@ -17,8 +23,8 @@ using anira_tilde_test::Backend;
 // exists only when the build enables ANIRA_WITH_LIBTORCH.
 class AniraSession : public testing::TestWithParam<Backend> {};
 
-static constexpr size_t kAPSineSignalSize = 512;
-static constexpr float  kAPSampleRate     = 44100.0f;
+static constexpr size_t k_ap_sine_signal_size = 512;
+static constexpr float k_ap_sample_rate = 44100.0f;
 
 // Simulate Max's audio callback pattern: process() is called on a fixed
 // hardware clock without waiting for the previous inference to complete.
@@ -37,61 +43,62 @@ static constexpr float  kAPSampleRate     = 44100.0f;
 // new_data_submitted → pre_process(N) reads it).
 TEST_P(AniraSession, MaxLikeCallbackPatternAreContinuous) {
     anira_tilde::Session proc(anira_tilde_test::json_path("sine_oscillator_test", GetParam()));
-    proc.prepare(kAPSineSignalSize, kAPSampleRate);
+    proc.prepare(k_ap_sine_signal_size, k_ap_sample_rate);
 
-    const float freq     = 440.0f;
-    const float max_step = 2.0f * static_cast<float>(M_PI) * freq / kAPSampleRate;
+    const float freq = 440.0f;
+    const float max_step = 2.0f * std::numbers::pi_v<float> * freq / k_ap_sample_rate;
 
     // Tensor 0 (freq, streamable): provide kAPSineSignalSize samples per call.
     // Tensor 1 (phase, state):     managed internally — pass 0 samples.
-    std::vector<float> freq_buf(kAPSineSignalSize, freq);
-    const float* freq_ch[1]   = { freq_buf.data() };
-    const float* dummy_in[1]  = { nullptr };          // never dereferenced
-    const float* const* in_ptrs[2] = { freq_ch, dummy_in };
-    size_t in_sizes[2] = { kAPSineSignalSize, 0 };
+    std::vector<float> freq_buf(k_ap_sine_signal_size, freq);
+    std::array<const float*, 1> freq_ch = {freq_buf.data()};
+    std::array<const float*, 1> dummy_in = {nullptr};  // never dereferenced
+    std::array<const float* const*, 2> in_ptrs = {freq_ch.data(), dummy_in.data()};
+    std::array<size_t, 2> in_sizes = {k_ap_sine_signal_size, 0};
 
-    std::vector<float> audio_buf(kAPSineSignalSize);
-    float* audio_ch[1]  = { audio_buf.data() };
-    float* dummy_out[1] = { nullptr };                // never dereferenced
-    float* const* out_ptrs[2] = { audio_ch, dummy_out };
-    size_t out_sizes[2] = { kAPSineSignalSize, 0 };
+    std::vector<float> audio_buf(k_ap_sine_signal_size);
+    std::array<float*, 1> audio_ch = {audio_buf.data()};
+    std::array<float*, 1> dummy_out = {nullptr};  // never dereferenced
+    std::array<float* const*, 2> out_ptrs = {audio_ch.data(), dummy_out.data()};
+    std::array<size_t, 2> out_sizes = {k_ap_sine_signal_size, 0};
 
     // Each "callback": call process() and capture audio output.
-    static constexpr auto kCallbackInterval = std::chrono::milliseconds(50);
+    static constexpr auto k_callback_interval = std::chrono::milliseconds(50);
 
     auto run_callback = [&](std::vector<float>& out) {
-        audio_buf.assign(kAPSineSignalSize, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
+        audio_buf.assign(k_ap_sine_signal_size, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
         out.assign(audio_buf.begin(), audio_buf.end());
-        std::this_thread::sleep_for(kCallbackInterval);
+        std::this_thread::sleep_for(k_callback_interval);
     };
 
     // Warm up to move past latency-padding zeros.
-    int warmup = static_cast<int>(proc.get_latency_samples() / kAPSineSignalSize) + 2;
+    int const warmup = static_cast<int>(proc.get_latency_samples() / k_ap_sine_signal_size) + 2;
     std::vector<float> discard;
-    for (int i = 0; i < warmup; ++i)
-        run_callback(discard);
+    for (int i = 0; i < warmup; ++i) { run_callback(discard); }
 
     // Capture consecutive blocks the Max way (no explicit wait between calls).
-    static constexpr int kNumBlocks = 4;
-    std::vector<std::vector<float>> blocks(kNumBlocks);
-    for (int b = 0; b < kNumBlocks; ++b)
-        run_callback(blocks[b]);
+    static constexpr int k_num_blocks = 4;
+    std::vector<std::vector<float>> blocks(k_num_blocks);
+    for (int b = 0; b < k_num_blocks; ++b) { run_callback(blocks[b]); }
 
     // Check sample-to-sample continuity within each block and at every
     // block boundary.  A discontinuity at a boundary means pre_process(N)
     // read a stale phase and the sine wave reset to an earlier position.
     auto check_step = [&](float a, float b, size_t idx) {
-        EXPECT_LE(std::abs(b - a), max_step * 1.1f)
-            << "discontinuity at sample " << idx;
+        EXPECT_LE(std::abs(b - a), max_step * 1.1f) << "discontinuity at sample " << idx;
     };
-    for (int blk = 0; blk < kNumBlocks; ++blk) {
-        for (size_t i = 1; i < kAPSineSignalSize; ++i)
-            check_step(blocks[blk][i-1], blocks[blk][i],
-                       static_cast<size_t>(blk) * kAPSineSignalSize + i);
-        if (blk + 1 < kNumBlocks)
-            check_step(blocks[blk].back(), blocks[blk+1].front(),
-                       static_cast<size_t>(blk + 1) * kAPSineSignalSize);
+    for (int blk = 0; blk < k_num_blocks; ++blk) {
+        for (size_t i = 1; i < k_ap_sine_signal_size; ++i) {
+            check_step(blocks[blk][i - 1],
+                       blocks[blk][i],
+                       static_cast<size_t>(blk) * k_ap_sine_signal_size + i);
+        }
+        if (blk + 1 < k_num_blocks) {
+            check_step(blocks[blk].back(),
+                       blocks[blk + 1].front(),
+                       static_cast<size_t>(blk + 1) * k_ap_sine_signal_size);
+        }
     }
 }
 
@@ -99,9 +106,10 @@ TEST_P(AniraSession, MaxLikeCallbackPatternAreContinuous) {
 // ONNX backend; what is under test is the relative-path resolution.
 TEST(AniraSessionPaths, RelativeModelPathLoads) {
     // Verifies that model_path values relative to the JSON config file are resolved correctly.
-    EXPECT_NO_THROW(anira_tilde::Session proc(SINE_OSC_RELATIVE_JSON_PATH));
+    EXPECT_NO_THROW(anira_tilde::Session const proc(SINE_OSC_RELATIVE_JSON_PATH));
 }
 
-INSTANTIATE_TEST_SUITE_P(Backends, AniraSession,
+INSTANTIATE_TEST_SUITE_P(Backends,
+                         AniraSession,
                          testing::ValuesIn(anira_tilde_test::backends()),
                          anira_tilde_test::param_name);

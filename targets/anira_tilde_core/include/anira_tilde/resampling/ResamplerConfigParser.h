@@ -31,18 +31,18 @@ namespace anira_tilde {
  * adds no latency.
  */
 struct ResamplerConfig {
-    double model_sample_rate = 0.0;
-    ResamplerQuality quality = ResamplerQuality::SincFastest;
-    std::map<size_t, ResamplerQuality> input_quality;   // tensor index -> override
-    std::map<size_t, ResamplerQuality> output_quality;  // tensor index -> override
+    double m_model_sample_rate = 0.0;
+    ResamplerQuality m_quality = ResamplerQuality::SincFastest;
+    std::map<size_t, ResamplerQuality> m_input_quality;   // tensor index -> override
+    std::map<size_t, ResamplerQuality> m_output_quality;  // tensor index -> override
 
     ResamplerQuality quality_for_input(size_t tensor) const {
-        auto it = input_quality.find(tensor);
-        return it == input_quality.end() ? quality : it->second;
+        auto it = m_input_quality.find(tensor);
+        return it == m_input_quality.end() ? m_quality : it->second;
     }
     ResamplerQuality quality_for_output(size_t tensor) const {
-        auto it = output_quality.find(tensor);
-        return it == output_quality.end() ? quality : it->second;
+        auto it = m_output_quality.find(tensor);
+        return it == m_output_quality.end() ? m_quality : it->second;
     }
 };
 

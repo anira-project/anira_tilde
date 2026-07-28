@@ -1,9 +1,15 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
-#include <thread>
+#include <array>
 #include <chrono>
+#include <cstddef>
+#include <thread>
+#include <vector>
+
 #include "TestBackends.h"
 #include "anira_tilde/inference/Session.h"
+#include "anira_tilde/inference/TensorLayout.h"
 
 using namespace anira_tilde;
 
@@ -15,10 +21,10 @@ class RateAdaptation : public testing::TestWithParam<Backend> {};
 
 // Host buffer size used throughout these tests.  output_size=32 is a multiple
 // so inference boundaries always fall on callback boundaries (clean timing).
-static constexpr size_t kRABuffer     = 16;
-static constexpr size_t kRAOutputSize = 32;  // upsampler_x32 model output block
-static constexpr float  kRASampleRate = 44100.0f;
-static constexpr auto   kRACallbackMs = std::chrono::milliseconds(50);
+static constexpr size_t k_ra_buffer = 16;
+static constexpr size_t k_ra_output_size = 32;  // upsampler_x32 model output block
+static constexpr float k_ra_sample_rate = 44100.0f;
+static constexpr auto k_ra_callback_ms = std::chrono::milliseconds(50);
 
 // Per-build extra warmup callbacks. Slow build flavours (sanitizers, x86_64
 // under Rosetta) bake a larger max_inference_time into the JSON via
@@ -28,7 +34,7 @@ static constexpr auto   kRACallbackMs = std::chrono::milliseconds(50);
 #ifndef ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS
 #define ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS 0
 #endif
-static constexpr int kRAExtraWarmupCallbacks =
+static constexpr int k_ra_extra_warmup_callbacks =
     2 + (ANIRA_TILDE_TEST_MAX_INFERENCE_TIME_OVERHEAD_MS + 49) / 50;
 
 // Model: input_size=1, output_size=32.  One inference fires every 32 output
@@ -43,89 +49,92 @@ static constexpr int kRAExtraWarmupCallbacks =
 // producing output ≈ [kRABuffer-1, ...] instead of [0, ...].
 TEST_P(RateAdaptation, UpsampleUsesFirstSampleAtBoundary) {
     anira_tilde::Session proc(anira_tilde_test::json_path("rate_adapt_test", GetParam()));
-    proc.prepare(kRABuffer, kRASampleRate);
+    proc.prepare(k_ra_buffer, k_ra_sample_rate);
 
-    std::vector<float> in_buf(kRABuffer);
-    for (size_t i = 0; i < kRABuffer; ++i)
+    std::vector<float> in_buf(k_ra_buffer);
+    for (size_t i = 0; i < k_ra_buffer; ++i) {
         in_buf[i] = static_cast<float>(i);  // [0, 1, 2, ..., 15]
-    std::vector<float> out_buf(kRABuffer, 0.0f);
+    }
+    std::vector<float> out_buf(k_ra_buffer, 0.0f);
 
-    const float*       in_ch[1]  = { in_buf.data() };
-    float*             out_ch[1] = { out_buf.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { kRABuffer };
-    size_t out_sizes[1] = { kRABuffer };
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {k_ra_buffer};
+    std::array<size_t, 1> out_sizes = {k_ra_buffer};
 
     auto run_callback = [&]() {
-        out_buf.assign(kRABuffer, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_ra_buffer, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
     // Warm up past latency.
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_callback();
+    int const warmup =
+        static_cast<int>(proc.get_latency_samples() / k_ra_buffer) + k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_callback(); }
 
     // After warmup every inference uses in_buf[0]=0.0, so output should be 0.0.
     run_callback();
 
-    for (size_t i = 0; i < kRABuffer; ++i)
+    for (size_t i = 0; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i;
+    }
 }
 
 // Verify that the inference boundary falls exactly every output_size samples.
 TEST_P(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
     anira_tilde::Session proc(anira_tilde_test::json_path("rate_adapt_test", GetParam()));
-    proc.prepare(kRABuffer, kRASampleRate);
+    proc.prepare(k_ra_buffer, k_ra_sample_rate);
 
-    std::vector<float> zero_buf(kRABuffer, 0.0f);
-    std::vector<float> one_buf(kRABuffer, 1.0f);
-    std::vector<float> out_buf(kRABuffer, 0.0f);
+    std::vector<float> const zero_buf(k_ra_buffer, 0.0f);
+    std::vector<float> const one_buf(k_ra_buffer, 1.0f);
+    std::vector<float> out_buf(k_ra_buffer, 0.0f);
 
-    float*             out_ch[1]   = { out_buf.data() };
-    float* const*      out_ptrs[1] = { out_ch };
-    size_t out_sizes[1] = { kRABuffer };
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> out_sizes = {k_ra_buffer};
 
     auto run_with = [&](const std::vector<float>& in) {
-        out_buf.assign(kRABuffer, 0.0f);
-        const float*        in_ch[1]   = { in.data() };
-        const float* const* in_ptrs[1] = { in_ch };
-        size_t in_sizes[1] = { kRABuffer };
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_ra_buffer, 0.0f);
+        std::array<const float*, 1> in_ch = {in.data()};
+        std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+        std::array<size_t, 1> in_sizes = {k_ra_buffer};
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
-    int latency = static_cast<int>(proc.get_latency_samples() / kRABuffer);
-    int warmup = latency + 2;
-    for (int i = 0; i < warmup; ++i)
-        run_with(zero_buf);
+    int const latency = static_cast<int>(proc.get_latency_samples() / k_ra_buffer);
+    int const warmup = latency + 2;
+    for (int i = 0; i < warmup; ++i) { run_with(zero_buf); }
 
-    // run one block (32 samples) with ones, then run inferences with zeros until latency has passed, 
-    // then check that we get the same as output
+    // run one block (32 samples) with ones, then run inferences with zeros until latency has
+    // passed, then check that we get the same as output
     run_with(one_buf);
     run_with(one_buf);
 
     // Wait for remaining latency to pass after the two inferences above
-    for (int i = 0; i < latency - 2; ++i)
-        run_with(zero_buf);
+    for (int i = 0; i < latency - 2; ++i) { run_with(zero_buf); }
 
-    for (size_t i = 0; i < kRABuffer; ++i)
+    for (size_t i = 0; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i << " ones appeared too early";
+    }
 
     // The next two runs (16 samples) should return ones - 32x upsampler
     for (int i = 0; i < 2; ++i) {
         run_with(zero_buf);
-        
-        for (size_t i = 0; i < kRABuffer; ++i)
+
+        for (size_t i = 0; i < k_ra_buffer; ++i) {
             EXPECT_FLOAT_EQ(out_buf[i], 1.0f) << "sample " << i << " from one-inference";
+        }
     }
-    
+
     run_with(zero_buf);
 
-    for (size_t i = 0; i < kRABuffer; ++i)
+    for (size_t i = 0; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], 0.0f) << "sample " << i << " should return to zero";
+    }
 }
 
 // Host buffer LARGER than the model output block (64 = 2×32): two inferences
@@ -133,34 +142,33 @@ TEST_P(RateAdaptation, InferenceBoundaryAlignedToOutputSize) {
 // decoder regime (host 2048, output block 128) — a single-fire adaptor
 // starves anira and the output collapses to silence.
 TEST_P(RateAdaptation, UpsampleFiresOncePerOutputBlockBoundary) {
-    constexpr size_t kBig = 2 * kRAOutputSize;  // 64 = two output blocks
+    constexpr size_t k_big = 2 * k_ra_output_size;  // 64 = two output blocks
     anira_tilde::Session proc(anira_tilde_test::json_path("rate_adapt_test", GetParam()));
-    proc.prepare(kBig, kRASampleRate);
+    proc.prepare(k_big, k_ra_sample_rate);
 
     // Boundaries fall at offsets 0 and 32 of every callback, so inferences
     // alternate between in_buf[0]=1 and in_buf[32]=33 (never 0 — a zero in
     // the steady-state output would mean a starved/underrun ring instead).
-    std::vector<float> in_buf(kBig);
-    for (size_t i = 0; i < kBig; ++i)
-        in_buf[i] = static_cast<float>(i + 1);
-    std::vector<float> out_buf(kBig, 0.0f);
+    std::vector<float> in_buf(k_big);
+    for (size_t i = 0; i < k_big; ++i) { in_buf[i] = static_cast<float>(i + 1); }
+    std::vector<float> out_buf(k_big, 0.0f);
 
-    const float*        in_ch[1]    = { in_buf.data() };
-    float*              out_ch[1]   = { out_buf.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { kBig };
-    size_t out_sizes[1] = { kBig };
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {k_big};
+    std::array<size_t, 1> out_sizes = {k_big};
 
     auto run_callback = [&]() {
-        out_buf.assign(kBig, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_big, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kBig) + kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_callback();
+    int const warmup =
+        static_cast<int>(proc.get_latency_samples() / k_big) + k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_callback(); }
 
     // Collect four callbacks of steady-state output.
     std::vector<float> collected;
@@ -175,14 +183,15 @@ TEST_P(RateAdaptation, UpsampleFiresOncePerOutputBlockBoundary) {
     for (size_t i = 0; i < collected.size(); ++i) {
         ASSERT_TRUE(collected[i] == 1.0f || collected[i] == 33.0f)
             << "sample " << i << " = " << collected[i];
-        if (collected[i] == 1.0f) ++ones;
+        if (collected[i] == 1.0f) { ++ones; }
     }
     EXPECT_EQ(ones, collected.size() / 2);
     for (size_t i = 1; i < collected.size(); ++i) {
-        if (collected[i] == collected[i - 1]) continue;
-        for (size_t j = i; j < std::min(i + kRAOutputSize, collected.size()); ++j)
+        if (collected[i] == collected[i - 1]) { continue; }
+        for (size_t j = i; j < std::min(i + k_ra_output_size, collected.size()); ++j) {
             EXPECT_EQ(collected[j], collected[i]) << "run broken at sample " << j;
-        i += kRAOutputSize - 1;
+        }
+        i += k_ra_output_size - 1;
     }
 }
 
@@ -200,32 +209,33 @@ TEST_P(RateAdaptation, UpsampleFiresOncePerOutputBlockBoundary) {
 // once the pipeline is warm.  Requires sample-and-hold (design spec).
 TEST_P(RateAdaptation, DownsampleHoldsConstantValue) {
     anira_tilde::Session proc(anira_tilde_test::json_path("downsample_test", GetParam()));
-    proc.prepare(kRABuffer, kRASampleRate);
+    proc.prepare(k_ra_buffer, k_ra_sample_rate);
 
-    std::vector<float> in_buf(kRABuffer, 2.0f);
-    std::vector<float> out_buf(kRABuffer, 0.0f);
+    std::vector<float> in_buf(k_ra_buffer, 2.0f);
+    std::vector<float> out_buf(k_ra_buffer, 0.0f);
 
-    const float*        in_ch[1]    = { in_buf.data() };
-    float*              out_ch[1]   = { out_buf.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { kRABuffer };
-    size_t out_sizes[1] = { kRABuffer };
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {k_ra_buffer};
+    std::array<size_t, 1> out_sizes = {k_ra_buffer};
 
     auto run_callback = [&]() {
-        out_buf.assign(kRABuffer, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_ra_buffer, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_callback();
+    int const warmup =
+        static_cast<int>(proc.get_latency_samples() / k_ra_buffer) + k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_callback(); }
 
     run_callback();
 
-    for (size_t i = 0; i < kRABuffer; ++i)
+    for (size_t i = 0; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], 2.0f) << "sample " << i;
+    }
 }
 
 // Inference boundary falls exactly every input_size=32 samples (= 2 callbacks).
@@ -233,28 +243,28 @@ TEST_P(RateAdaptation, DownsampleHoldsConstantValue) {
 // flip all output to 2.0.
 TEST_P(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
     anira_tilde::Session proc(anira_tilde_test::json_path("downsample_test", GetParam()));
-    proc.prepare(kRABuffer, kRASampleRate);
+    proc.prepare(k_ra_buffer, k_ra_sample_rate);
 
-    std::vector<float> zero_buf(kRABuffer, 0.0f);
-    std::vector<float> two_buf(kRABuffer, 2.0f);
-    std::vector<float> out_buf(kRABuffer, 0.0f);
+    std::vector<float> const zero_buf(k_ra_buffer, 0.0f);
+    std::vector<float> const two_buf(k_ra_buffer, 2.0f);
+    std::vector<float> out_buf(k_ra_buffer, 0.0f);
 
-    float*             out_ch[1]    = { out_buf.data() };
-    float* const*      out_ptrs[1]  = { out_ch };
-    size_t out_sizes[1] = { kRABuffer };
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> out_sizes = {k_ra_buffer};
 
     auto run_with = [&](const std::vector<float>& in) {
-        out_buf.assign(kRABuffer, 0.0f);
-        const float*        in_ch[1]   = { in.data() };
-        const float* const* in_ptrs[1] = { in_ch };
-        size_t in_sizes[1] = { kRABuffer };
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_ra_buffer, 0.0f);
+        std::array<const float*, 1> in_ch = {in.data()};
+        std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+        std::array<size_t, 1> in_sizes = {k_ra_buffer};
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_with(zero_buf);
+    int const warmup =
+        static_cast<int>(proc.get_latency_samples() / k_ra_buffer) + k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_with(zero_buf); }
 
     // input_size=32 == 2*kRABuffer: two callbacks = one inference boundary.
     // Drain two full boundaries of zeros so the ring buffer is empty.
@@ -264,13 +274,14 @@ TEST_P(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
     run_with(zero_buf);  // callback 2/2 → zero-inference, ring buffer drained
 
     // Push exactly one inference boundary of 2.0.
-    run_with(two_buf);   // callback 1/2 — 16 samples accumulated
-    run_with(two_buf);   // callback 2/2 — 32 total → two-inference fires (async)
-    run_with(two_buf);   // callback 3 — 50ms sleep has elapsed, result is in ring, pop it
+    run_with(two_buf);  // callback 1/2 — 16 samples accumulated
+    run_with(two_buf);  // callback 2/2 — 32 total → two-inference fires (async)
+    run_with(two_buf);  // callback 3 — 50ms sleep has elapsed, result is in ring, pop it
 
     // out_buf should contain the 2.0 inference result (sample-and-hold).
-    for (size_t i = 0; i < kRABuffer; ++i)
+    for (size_t i = 0; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], 2.0f) << "sample " << i;
+    }
 }
 
 // Host buffer LARGER than the model input block (64 = 2×32): two inferences
@@ -279,37 +290,35 @@ TEST_P(RateAdaptation, DownsampleInferenceBoundaryAlignedToInputSize) {
 // (host 2048, input block 128) — a single-pop adaptor drops 15 of every 16
 // latents through ring overflow and holds one stale value across the block.
 TEST_P(RateAdaptation, DownsamplePopsOncePerInputBlockBoundary) {
-    constexpr size_t kBig     = 64;  // two input blocks of the mean model
-    constexpr size_t kInBlock = 32;
+    constexpr size_t k_big = 64;  // two input blocks of the mean model
+    constexpr size_t k_in_block = 32;
     anira_tilde::Session proc(anira_tilde_test::json_path("downsample_test", GetParam()));
-    proc.prepare(kBig, kRASampleRate);
+    proc.prepare(k_big, k_ra_sample_rate);
 
     // First input block all 1.0, second all 3.0 → the mean model pops
     // alternating 1.0 / 3.0, one value per 32-sample segment.
-    std::vector<float> in_buf(kBig);
-    for (size_t i = 0; i < kBig; ++i)
-        in_buf[i] = i < kInBlock ? 1.0f : 3.0f;
-    std::vector<float> out_buf(kBig, 0.0f);
+    std::vector<float> in_buf(k_big);
+    for (size_t i = 0; i < k_big; ++i) { in_buf[i] = i < k_in_block ? 1.0f : 3.0f; }
+    std::vector<float> out_buf(k_big, 0.0f);
 
-    const float*        in_ch[1]    = { in_buf.data() };
-    float*              out_ch[1]   = { out_buf.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { kBig };
-    size_t out_sizes[1] = { kBig };
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {k_big};
+    std::array<size_t, 1> out_sizes = {k_big};
 
     auto run_callback = [&]() {
-        out_buf.assign(kBig, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_big, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
     // The reported latency counts samples of the OUTPUT tensor's stream,
     // which runs at 1/kInBlock of the host rate here.
-    int warmup = static_cast<int>(proc.get_latency_samples() * kInBlock / kBig) +
-                 kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_callback();
+    int const warmup = static_cast<int>(proc.get_latency_samples() * k_in_block / k_big) +
+                       k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_callback(); }
 
     std::vector<float> collected;
     for (int cb = 0; cb < 4; ++cb) {
@@ -321,14 +330,15 @@ TEST_P(RateAdaptation, DownsamplePopsOncePerInputBlockBoundary) {
     for (size_t i = 0; i < collected.size(); ++i) {
         ASSERT_TRUE(collected[i] == 1.0f || collected[i] == 3.0f)
             << "sample " << i << " = " << collected[i];
-        if (collected[i] == 1.0f) ++ones;
+        if (collected[i] == 1.0f) { ++ones; }
     }
     EXPECT_EQ(ones, collected.size() / 2);
     for (size_t i = 1; i < collected.size(); ++i) {
-        if (collected[i] == collected[i - 1]) continue;
-        for (size_t j = i; j < std::min(i + kInBlock, collected.size()); ++j)
+        if (collected[i] == collected[i - 1]) { continue; }
+        for (size_t j = i; j < std::min(i + k_in_block, collected.size()); ++j) {
             EXPECT_EQ(collected[j], collected[i]) << "run broken at sample " << j;
-        i += kInBlock - 1;
+        }
+        i += k_in_block - 1;
     }
 }
 
@@ -346,70 +356,77 @@ namespace {
 
 anira_tilde::TensorLayout make_pair_layout(size_t in_block, size_t out_block) {
     anira_tilde::TensorLayout layout;
-    layout.sig_input_channels  = {1};
-    layout.sig_output_channels = {1};
-    layout.input_block_sizes   = {in_block};
-    layout.output_block_sizes  = {out_block};
+    layout.m_sig_input_channels = {1};
+    layout.m_sig_output_channels = {1};
+    layout.m_input_block_sizes = {in_block};
+    layout.m_output_block_sizes = {out_block};
     return layout;
 }
 
-} // namespace
+}  // namespace
 
 // Upsample pair, 4 frames per 16-sample block: each gathered frame j must
 // come from host offset boundary + j*4, not boundary + j.
 TEST(RateAdaptorUnit, UpsampleGathersFramesAtStride) {
-    auto layout = make_pair_layout(/*in=*/4, /*out=*/16);
+    auto layout = make_pair_layout(/*in_block=*/4, /*out_block=*/16);
     anira_tilde::RateAdaptor adaptor;
     adaptor.prepare(layout, /*max_block_size=*/32);
 
     std::vector<float> in(32), out(32, 0.0f);
-    for (size_t i = 0; i < in.size(); ++i)
-        in[i] = static_cast<float>(i);
+    for (size_t i = 0; i < in.size(); ++i) { in[i] = static_cast<float>(i); }
 
-    const float*        in_ch[1]    = { in.data() };
-    float*              out_ch[1]   = { out.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { 32 };
-    size_t out_sizes[1] = { 32 };
+    std::array<const float*, 1> in_ch = {in.data()};
+    std::array<float*, 1> out_ch = {out.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {32};
+    std::array<size_t, 1> out_sizes = {32};
 
-    auto view = adaptor.pre_dispatch(layout, in_ptrs, in_sizes, out_ptrs, out_sizes);
+    auto view = adaptor.pre_dispatch(layout,
+                                     in_ptrs.data(),
+                                     in_sizes.data(),
+                                     out_ptrs.data(),
+                                     out_sizes.data());
 
     // Two boundaries (offsets 0 and 16) → two gathered blocks of 4 frames.
-    ASSERT_EQ(view.in_sample_counts[0], 8u);
-    const float* gathered = view.in_tensors[0][0];
-    const float expected[8] = { 0, 4, 8, 12, 16, 20, 24, 28 };
-    for (size_t j = 0; j < 8; ++j)
-        EXPECT_FLOAT_EQ(gathered[j], expected[j]) << "frame " << j;
+    ASSERT_EQ(view.m_in_sample_counts[0], 8u);
+    const float* gathered = view.m_in_tensors[0][0];
+    const std::array<float, 8> expected = {0, 4, 8, 12, 16, 20, 24, 28};
+    for (size_t j = 0; j < 8; ++j) { EXPECT_FLOAT_EQ(gathered[j], expected[j]) << "frame " << j; }
 }
 
 // Downsample pair, 4 frames per 16-sample input block: each popped frame
 // must be held across its own 4-sample sub-segment, in order.
 TEST(RateAdaptorUnit, DownsampleHoldsEachFrameAcrossItsSubSegment) {
-    auto layout = make_pair_layout(/*in=*/16, /*out=*/4);
+    auto layout = make_pair_layout(/*in_block=*/16, /*out_block=*/4);
     anira_tilde::RateAdaptor adaptor;
     adaptor.prepare(layout, /*max_block_size=*/32);
 
     std::vector<float> in(32, 0.0f), out(32, -1.0f);
-    const float*        in_ch[1]    = { in.data() };
-    float*              out_ch[1]   = { out.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { 32 };
-    size_t out_sizes[1] = { 32 };
+    std::array<const float*, 1> in_ch = {in.data()};
+    std::array<float*, 1> out_ch = {out.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {32};
+    std::array<size_t, 1> out_sizes = {32};
 
-    auto view = adaptor.pre_dispatch(layout, in_ptrs, in_sizes, out_ptrs, out_sizes);
+    auto view = adaptor.pre_dispatch(layout,
+                                     in_ptrs.data(),
+                                     in_sizes.data(),
+                                     out_ptrs.data(),
+                                     out_sizes.data());
 
     // Two boundaries (offsets 0 and 16) → two block pops of 4 frames each;
     // play the role of anira and write 1..8 into the pop scratch.
-    ASSERT_EQ(view.out_sample_counts[0], 8u);
-    for (size_t j = 0; j < 8; ++j)
-        view.out_tensors[0][0][j] = static_cast<float>(j + 1);
+    ASSERT_EQ(view.m_out_sample_counts[0], 8u);
+    for (size_t j = 0; j < 8; ++j) { view.m_out_tensors[0][0][j] = static_cast<float>(j + 1); }
 
-    adaptor.post_dispatch(layout, out_ptrs, out_sizes);
+    adaptor.post_dispatch(layout, out_ptrs.data(), out_sizes.data());
 
-    for (size_t s = 0; s < 32; ++s)
-        EXPECT_FLOAT_EQ(out[s], static_cast<float>(s / 4 + 1)) << "sample " << s;
+    for (size_t s = 0; s < 32; ++s) {
+        const size_t sub_segment = s / 4;
+        EXPECT_FLOAT_EQ(out[s], static_cast<float>(sub_segment + 1)) << "sample " << s;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -425,42 +442,46 @@ TEST(RateAdaptorUnit, DownsampleHoldsEachFrameAcrossItsSubSegment) {
 //   (b) differ by a positive integer multiple of 1.0 (state is advancing).
 TEST_P(RateAdaptation, UpsampleWithStateRateAdaptationAndStatePassedForward) {
     anira_tilde::Session proc(anira_tilde_test::json_path("upsample_state_test", GetParam()));
-    proc.prepare(kRABuffer, kRASampleRate);
+    proc.prepare(k_ra_buffer, k_ra_sample_rate);
 
-    std::vector<float> in_buf(kRABuffer, 0.0f);  // latent = 0 → audio = state
-    std::vector<float> out_buf(kRABuffer, 0.0f);
+    std::vector<float> in_buf(k_ra_buffer, 0.0f);  // latent = 0 → audio = state
+    std::vector<float> out_buf(k_ra_buffer, 0.0f);
 
-    const float*        in_ch[1]    = { in_buf.data() };
-    float*              out_ch[1]   = { out_buf.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { kRABuffer };
-    size_t out_sizes[1] = { kRABuffer };
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {k_ra_buffer};
+    std::array<size_t, 1> out_sizes = {k_ra_buffer};
 
     auto run_callback = [&]() {
-        out_buf.assign(kRABuffer, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_ra_buffer, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_callback();
+    int const warmup =
+        static_cast<int>(proc.get_latency_samples() / k_ra_buffer) + k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_callback(); }
 
     // Capture two consecutive post-warmup blocks.
     run_callback();
     const float v1 = out_buf[0];
-    for (size_t i = 1; i < kRABuffer; ++i)
-        EXPECT_FLOAT_EQ(out_buf[i], v1) << "block1 sample " << i << " not uniform (one inference should fill one block)";
+    for (size_t i = 1; i < k_ra_buffer; ++i) {
+        EXPECT_FLOAT_EQ(out_buf[i], v1)
+            << "block1 sample " << i << " not uniform (one inference should fill one block)";
+    }
 
     run_callback();
     const float v2 = out_buf[0];
-    for (size_t i = 1; i < kRABuffer; ++i)
+    for (size_t i = 1; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], v2) << "block2 sample " << i << " not uniform";
+    }
 
     // Each pop drains exactly one inference worth of output (output_size=16 samples).
     // Consecutive inferences are separated by exactly 1 state increment, so delta == 1.
-    EXPECT_FLOAT_EQ(v2 - v1, 1.0f) << "expected state delta of 1 between consecutive blocks; got " << (v2 - v1);
+    EXPECT_FLOAT_EQ(v2 - v1, 1.0f)
+        << "expected state delta of 1 between consecutive blocks; got " << (v2 - v1);
 }
 
 // ---------------------------------------------------------------------------
@@ -473,42 +494,45 @@ TEST_P(RateAdaptation, UpsampleWithStateRateAdaptationAndStatePassedForward) {
 // ---------------------------------------------------------------------------
 TEST_P(RateAdaptation, UpsampleWithMultipleStateTensorsDoesNotCrash) {
     anira_tilde::Session proc(anira_tilde_test::json_path("upsample_multistate_test", GetParam()));
-    proc.prepare(kRABuffer, kRASampleRate);
+    proc.prepare(k_ra_buffer, k_ra_sample_rate);
 
-    std::vector<float> in_buf(kRABuffer, 0.0f);
-    std::vector<float> out_buf(kRABuffer, 0.0f);
+    std::vector<float> in_buf(k_ra_buffer, 0.0f);
+    std::vector<float> out_buf(k_ra_buffer, 0.0f);
 
-    const float*        in_ch[1]    = { in_buf.data() };
-    float*              out_ch[1]   = { out_buf.data() };
-    const float* const* in_ptrs[1]  = { in_ch };
-    float* const*       out_ptrs[1] = { out_ch };
-    size_t in_sizes[1]  = { kRABuffer };
-    size_t out_sizes[1] = { kRABuffer };
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<const float* const*, 1> in_ptrs = {in_ch.data()};
+    std::array<float* const*, 1> out_ptrs = {out_ch.data()};
+    std::array<size_t, 1> in_sizes = {k_ra_buffer};
+    std::array<size_t, 1> out_sizes = {k_ra_buffer};
 
     auto run_callback = [&]() {
-        out_buf.assign(kRABuffer, 0.0f);
-        proc.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
-        std::this_thread::sleep_for(kRACallbackMs);
+        out_buf.assign(k_ra_buffer, 0.0f);
+        proc.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
+        std::this_thread::sleep_for(k_ra_callback_ms);
     };
 
-    int warmup = static_cast<int>(proc.get_latency_samples() / kRABuffer) + kRAExtraWarmupCallbacks;
-    for (int i = 0; i < warmup; ++i)
-        run_callback();
+    int const warmup =
+        static_cast<int>(proc.get_latency_samples() / k_ra_buffer) + k_ra_extra_warmup_callbacks;
+    for (int i = 0; i < warmup; ++i) { run_callback(); }
 
     run_callback();
     const float v1 = out_buf[0];
-    for (size_t i = 1; i < kRABuffer; ++i)
+    for (size_t i = 1; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], v1) << "block1 sample " << i << " not uniform";
+    }
 
     run_callback();
     const float v2 = out_buf[0];
-    for (size_t i = 1; i < kRABuffer; ++i)
+    for (size_t i = 1; i < k_ra_buffer; ++i) {
         EXPECT_FLOAT_EQ(out_buf[i], v2) << "block2 sample " << i << " not uniform";
+    }
 
     EXPECT_FLOAT_EQ(v2 - v1, 1.0f)
         << "expected state delta of 1 between consecutive blocks; got " << (v2 - v1);
 }
 
-INSTANTIATE_TEST_SUITE_P(Backends, RateAdaptation,
+INSTANTIATE_TEST_SUITE_P(Backends,
+                         RateAdaptation,
                          testing::ValuesIn(anira_tilde_test::backends()),
                          anira_tilde_test::param_name);

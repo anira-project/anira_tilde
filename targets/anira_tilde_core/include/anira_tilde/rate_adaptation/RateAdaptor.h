@@ -1,6 +1,7 @@
 #pragma once
 
 #include <anira/anira.h>
+
 #include <cstdint>
 #include <vector>
 
@@ -51,10 +52,10 @@ public:
     /// want. Returned by pre_dispatch() and consumed by the caller's
     /// InferenceHandler invocation.
     struct AniraView {
-        const float* const* const* in_tensors;
-        size_t*                    in_sample_counts;
-        float* const* const*       out_tensors;
-        size_t*                    out_sample_counts;
+        const float* const* const* m_in_tensors;
+        size_t* m_in_sample_counts;
+        float* const* const* m_out_tensors;
+        size_t* m_out_sample_counts;
     };
 
     /// `max_block_size` is the largest per-call sample count process() will
@@ -66,8 +67,10 @@ public:
 
     /// Compute the views anira sees this block.
     AniraView pre_dispatch(const TensorLayout& layout,
-                           const float* const* const* input_data,  const size_t* num_input_samples,
-                           float* const* const*       output_data, const size_t* num_output_samples);
+                           const float* const* const* input_data,
+                           const size_t* num_input_samples,
+                           float* const* const* output_data,
+                           const size_t* num_output_samples);
 
     /// Apply post-dispatch fixups (downsample sample-and-hold).
     void post_dispatch(const TensorLayout& layout,
@@ -78,29 +81,29 @@ private:
     /// State for a single signal tensor pair. Only the slot matching `kind`
     /// is actually used; the others stay default-constructed (zero cost).
     struct PerTensor {
-        Kind                 kind       = Kind::Equal;
-        size_t               pos        = 0;       // running host-sample counter
-        size_t               max_fires  = 0;       // scratch capacity, in inferences
-        size_t               hold_phase = 0;       // host samples since the held block's boundary
-        std::vector<std::vector<float>> upsample_gather;  // per-channel gathered input blocks
-        anira::Buffer<float> downsample_hold;      // currently-playing output block (Downsample)
-        anira::Buffer<float> downsample_pop;       // pop scratch anira writes into (Downsample)
-        std::vector<size_t>  downsample_offsets;   // boundary offsets of this block's pops
+        Kind m_kind = Kind::Equal;
+        size_t m_pos = 0;         // running host-sample counter
+        size_t m_max_fires = 0;   // scratch capacity, in inferences
+        size_t m_hold_phase = 0;  // host samples since the held block's boundary
+        std::vector<std::vector<float>> m_upsample_gather;  // per-channel gathered input blocks
+        anira::Buffer<float> m_downsample_hold;    // currently-playing output block (Downsample)
+        anira::Buffer<float> m_downsample_pop;     // pop scratch anira writes into (Downsample)
+        std::vector<size_t> m_downsample_offsets;  // boundary offsets of this block's pops
     };
 
-    std::vector<PerTensor> m_tensors;    // one per max(n_sig_in, n_sig_out)
-    bool                   m_active = false;
+    std::vector<PerTensor> m_tensors;  // one per max(n_sig_in, n_sig_out)
+    bool m_active = false;
 
     // anira-shaped view storage. Rewritten per pre_dispatch() call,
     // allocated once in prepare(). Channels-of-tensor[t] live in
     // m_in_view_channels[t]; m_in_view_tensors[t] points at that
     // sub-vector's data().
     std::vector<std::vector<const float*>> m_in_view_channels;
-    std::vector<const float**>             m_in_view_tensors;
-    std::vector<size_t>                    m_in_view_sample_counts;
-    std::vector<std::vector<float*>>       m_out_view_channels;
-    std::vector<float**>                   m_out_view_tensors;
-    std::vector<size_t>                    m_out_view_sample_counts;
+    std::vector<const float**> m_in_view_tensors;
+    std::vector<size_t> m_in_view_sample_counts;
+    std::vector<std::vector<float*>> m_out_view_channels;
+    std::vector<float**> m_out_view_tensors;
+    std::vector<size_t> m_out_view_sample_counts;
 };
 
-} // namespace anira_tilde
+}  // namespace anira_tilde

@@ -9,11 +9,11 @@
 
 #pragma once
 
+#include <anira/anira.h>
+#include <gtest/gtest.h>
+
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
-#include <anira/anira.h>
 
 #ifndef ANIRA_TILDE_TEST_JSON_DIR
 #error "ANIRA_TILDE_TEST_JSON_DIR must be defined via CMake"

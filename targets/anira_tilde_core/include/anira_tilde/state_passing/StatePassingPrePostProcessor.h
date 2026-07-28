@@ -1,6 +1,7 @@
 #pragma once
 
 #include <anira/anira.h>
+
 #include <vector>
 
 #include "anira_tilde/Exports.h"
@@ -26,15 +27,13 @@ namespace anira_tilde {
 class ANIRA_TILDE_API StatePassingPrePostProcessor : public anira::PrePostProcessor {
 public:
     StatePassingPrePostProcessor(anira::InferenceConfig& config,
-                                  const std::vector<StatePair>& state_pairs)
+                                 const std::vector<StatePair>& state_pairs)
         : anira::PrePostProcessor(config), m_state_pairs(state_pairs) {
         // Zero-initialize state input tensors so the first inference gets a
         // clean initial state rather than whatever malloc left in memory.
         for (const auto& pair : m_state_pairs) {
-            const size_t size = m_inference_config.get_tensor_input_size()[pair.input_tensor];
-            for (size_t j = 0; j < size; ++j) {
-                set_input(0.0f, pair.input_tensor, j);
-            }
+            const size_t size = m_inference_config.get_tensor_input_size()[pair.m_input_tensor];
+            for (size_t j = 0; j < size; ++j) { set_input(0.0f, pair.m_input_tensor, j); }
         }
     }
 
@@ -47,9 +46,9 @@ public:
         // Feed each state output back to its corresponding state input so that
         // the next call to pre_process() uses the freshly computed state.
         for (const auto& pair : m_state_pairs) {
-            const size_t size = m_inference_config.get_tensor_output_size()[pair.output_tensor];
+            const size_t size = m_inference_config.get_tensor_output_size()[pair.m_output_tensor];
             for (size_t j = 0; j < size; ++j) {
-                set_input(get_output(pair.output_tensor, j), pair.input_tensor, j);
+                set_input(get_output(pair.m_output_tensor, j), pair.m_input_tensor, j);
             }
         }
     }
@@ -58,4 +57,4 @@ private:
     std::vector<StatePair> m_state_pairs;
 };
 
-} // namespace anira_tilde
+}  // namespace anira_tilde

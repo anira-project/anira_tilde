@@ -9,8 +9,8 @@
 namespace anira_tilde {
 
 struct StatePair {
-    size_t output_tensor;  // global output tensor index (must be non-streamable)
-    size_t input_tensor;   // global input tensor index (must be non-streamable)
+    size_t m_output_tensor;  // global output tensor index (must be non-streamable)
+    size_t m_input_tensor;   // global input tensor index (must be non-streamable)
 };
 
 // Parse state_pairs from a JSON stream.
@@ -21,4 +21,4 @@ ANIRA_TILDE_API std::vector<StatePair> parse_state_pairs(std::istream& stream);
 // Returns an empty vector if the path is empty or the file cannot be opened.
 ANIRA_TILDE_API std::vector<StatePair> parse_state_pairs(const std::string& json_path);
 
-} // namespace anira_tilde
+}  // namespace anira_tilde

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include "anira_tilde/rate_adaptation/EffectiveBufferSize.h"
 
 using namespace anira_tilde;

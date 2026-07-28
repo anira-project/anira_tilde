@@ -1,7 +1,12 @@
 #include "anira_tilde/state_passing/StatePairParser.h"
 
+#include <cstddef>
 #include <fstream>
+#include <istream>
 #include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+#include <string>
+#include <vector>
 
 namespace anira_tilde {
 
@@ -11,27 +16,27 @@ std::vector<StatePair> parse_state_pairs(std::istream& stream) {
         nlohmann::json config;
         stream >> config;
 
-        if (!config.contains("state_config")) return pairs;
+        if (!config.contains("state_config")) { return pairs; }
         const auto& state_json = config.at("state_config");
-        if (!state_json.contains("state_pairs")) return pairs;
+        if (!state_json.contains("state_pairs")) { return pairs; }
 
         for (const auto& entry : state_json.at("state_pairs")) {
-            if (!entry.contains("output_tensor") || !entry.contains("input_tensor"))
-                continue;
+            if (!entry.contains("output_tensor") || !entry.contains("input_tensor")) { continue; }
             StatePair pair;
-            pair.output_tensor = entry.at("output_tensor").get<size_t>();
-            pair.input_tensor  = entry.at("input_tensor").get<size_t>();
+            pair.m_output_tensor = entry.at("output_tensor").get<size_t>();
+            pair.m_input_tensor = entry.at("input_tensor").get<size_t>();
             pairs.push_back(pair);
         }
-    } catch (...) {}
+    } catch (...) {  // NOLINT(bugprone-empty-catch) malformed JSON or wrong types: no state pairs
+    }
     return pairs;
 }
 
 std::vector<StatePair> parse_state_pairs(const std::string& json_path) {
-    if (json_path.empty()) return {};
+    if (json_path.empty()) { return {}; }
     std::ifstream file(json_path);
-    if (!file.is_open()) return {};
+    if (!file.is_open()) { return {}; }
     return parse_state_pairs(file);
 }
 
-} // namespace anira_tilde
+}  // namespace anira_tilde

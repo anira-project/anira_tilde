@@ -14,14 +14,14 @@
 // CMake takes care of defining the right macro on the right side.
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-    #if defined(ANIRA_TILDE_CORE_EXPORTS)
-        #define ANIRA_TILDE_API __declspec(dllexport)
-    #elif defined(ANIRA_TILDE_CORE_SHARED)
-        #define ANIRA_TILDE_API __declspec(dllimport)
-    #else
-        #define ANIRA_TILDE_API
-    #endif
+#if defined(ANIRA_TILDE_CORE_EXPORTS)
+#define ANIRA_TILDE_API __declspec(dllexport)
+#elif defined(ANIRA_TILDE_CORE_SHARED)
+#define ANIRA_TILDE_API __declspec(dllimport)
 #else
-    // macOS/Linux: default visibility is already "default", no annotation needed.
-    #define ANIRA_TILDE_API
+#define ANIRA_TILDE_API
+#endif
+#else
+// macOS/Linux: default visibility is already "default", no annotation needed.
+#define ANIRA_TILDE_API
 #endif

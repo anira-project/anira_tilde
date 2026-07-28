@@ -1,13 +1,13 @@
 #pragma once
 
+#include <anira_tilde/anira_tilde.h>
 #include <c74_min.h>
+
 #include <algorithm>
 #include <memory>
 #include <numeric>
 #include <string>
 #include <vector>
-
-#include <anira_tilde/anira_tilde.h>
 
 // Shared implementation for the anira~ and mc.anira~ Max objects. The two objects
 // are identical except for how their signal ports are laid out (one mono port per
@@ -23,34 +23,37 @@ template <class Derived, class AudioBase>
 class AniraTildeBase : public c74::min::object<Derived>, public AudioBase {
 public:
     enum MaxType {
-        SIGNAL  = 0,
+        SIGNAL = 0,
         MESSAGE = 1,
         LATENCY = 2,
     };
 
     struct Input {
-        std::unique_ptr<c74::min::inlet<>> inlet;
-        MaxType type;
-        size_t  tensor_index;
-        size_t  num_channels;
+        std::unique_ptr<c74::min::inlet<>> m_inlet;
+        MaxType m_type;
+        size_t m_tensor_index;
+        size_t m_num_channels;
     };
 
     struct Output {
-        std::unique_ptr<c74::min::outlet<>> outlet;
-        MaxType type;
-        size_t  tensor_index;
-        size_t  num_channels;
+        std::unique_ptr<c74::min::outlet<>> m_outlet;
+        MaxType m_type;
+        size_t m_tensor_index;
+        size_t m_num_channels;
     };
 
+    // Virtual only in the vector_operator instantiation; mc_operator's base
+    // declares no virtual operator(), so `override` cannot be used here.
+    // NOLINTNEXTLINE(modernize-use-override)
     void operator()(c74::min::audio_bundle input, c74::min::audio_bundle output) {
-        if (!m_engine.config_loaded()) return;
+        if (!m_engine.config_loaded()) { return; }
 
-        const size_t n_in   = m_total_in_channels;
-        const size_t n_out  = m_total_out_channels;
-        const size_t frames = static_cast<size_t>(input.frame_count());
+        const size_t n_in = m_total_in_channels;
+        const size_t n_out = m_total_out_channels;
+        const auto frames = static_cast<size_t>(input.frame_count());
 
-        const size_t in_avail  = static_cast<size_t>(input.channel_count());
-        const size_t out_avail = static_cast<size_t>(output.channel_count());
+        const auto in_avail = static_cast<size_t>(input.channel_count());
+        const auto out_avail = static_cast<size_t>(output.channel_count());
 
         // Cast Max's double input into float scratch. The model expects exactly
         // n_in channels; ignore extra incoming channels and zero-pad missing
@@ -60,111 +63,124 @@ public:
             float* dst = m_in_float_scratch.get_write_pointer(c);
             if (c < in_avail) {
                 const double* src = input.samples(c);
-                for (size_t s = 0; s < frames; ++s) dst[s] = static_cast<float>(src[s]);
+                for (size_t s = 0; s < frames; ++s) { dst[s] = static_cast<float>(src[s]); }
             } else {
                 std::fill_n(dst, frames, 0.0f);
             }
         }
 
-        m_engine.process(m_in_float_ptrs.data(),  n_in,
-                          m_out_float_ptrs.data(), n_out,
-                          frames);
+        m_engine.process(m_in_float_ptrs.data(), n_in, m_out_float_ptrs.data(), n_out, frames);
 
         // Cast float result back into Max's double output.
         const size_t out_n = std::min(n_out, out_avail);
         for (size_t c = 0; c < out_n; ++c) {
             const float* src = m_out_float_scratch.get_read_pointer(c);
-            double* dst      = output.samples(c);
-            for (size_t s = 0; s < frames; ++s) dst[s] = static_cast<double>(src[s]);
+            double* dst = output.samples(c);
+            for (size_t s = 0; s < frames; ++s) { dst[s] = static_cast<double>(src[s]); }
         }
     }
 
-protected:
+private:
+    // CRTP: only the deriving class (declared friend below) may construct.
     // name is the Max object name ("anira~" / "mc.anira~"), used in console output.
-    explicit AniraTildeBase(const char* name) :
-        m_name(name),
-        dspsetup(this, "dspsetup",
-            MIN_FUNCTION {
-                const auto sample_rate = static_cast<double>(args[0]);
-                const auto buffer_size = static_cast<size_t>(args[1]);
-                if (m_engine.config_loaded()) {
-                    m_engine.prepare(buffer_size, sample_rate);
-                    send_latency_outlet(m_engine.latency_samples());
+    explicit AniraTildeBase(const char* name)
+        : m_name(name)
+        , dspsetup(
+              this,
+              "dspsetup",
+              MIN_FUNCTION {  // NOLINT(misc-unused-parameters) macro-fixed signature
+                  const auto sample_rate = static_cast<double>(args[0]);
+                  const auto buffer_size = static_cast<size_t>(args[1]);
+                  if (m_engine.config_loaded()) {
+                      m_engine.prepare(buffer_size, sample_rate);
+                      send_latency_outlet(m_engine.latency_samples());
 
-                    // Allocate the float scratch we cast Max's double audio into /
-                    // out of each block. Sized by total channels across all signal
-                    // tensors (one entry per channel, regardless of port layout).
-                    m_in_float_scratch.resize (m_total_in_channels,  buffer_size);
-                    m_out_float_scratch.resize(m_total_out_channels, buffer_size);
-                    m_in_float_ptrs.resize (m_total_in_channels);
-                    m_out_float_ptrs.resize(m_total_out_channels);
-                    for (size_t c = 0; c < m_total_in_channels;  ++c) m_in_float_ptrs[c]  = m_in_float_scratch.get_read_pointer(c);
-                    for (size_t c = 0; c < m_total_out_channels; ++c) m_out_float_ptrs[c] = m_out_float_scratch.get_write_pointer(c);
-                }
-                m_initialized = true;
-                return {};
-            }
-        ),
-        bang(this, "bang", "Output non-streamable parameters",
-            MIN_FUNCTION {
-                if (!m_initialized || !m_engine.config_loaded()) {
-                    c74::max::error("%s: External not initialized. Activate DSP.", m_name);
-                    return {};
-                }
+                      // Allocate the float scratch we cast Max's double audio into /
+                      // out of each block. Sized by total channels across all signal
+                      // tensors (one entry per channel, regardless of port layout).
+                      m_in_float_scratch.resize(m_total_in_channels, buffer_size);
+                      m_out_float_scratch.resize(m_total_out_channels, buffer_size);
+                      m_in_float_ptrs.resize(m_total_in_channels);
+                      m_out_float_ptrs.resize(m_total_out_channels);
+                      for (size_t c = 0; c < m_total_in_channels; ++c) {
+                          m_in_float_ptrs[c] = m_in_float_scratch.get_read_pointer(c);
+                      }
+                      for (size_t c = 0; c < m_total_out_channels; ++c) {
+                          m_out_float_ptrs[c] = m_out_float_scratch.get_write_pointer(c);
+                      }
+                  }
+                  m_initialized = true;
+                  return {};
+              })
+        , m_bang(
+              this,
+              "bang",
+              "Output non-streamable parameters",
+              MIN_FUNCTION {  // NOLINT(misc-unused-parameters) macro-fixed signature
+                  if (!m_initialized || !m_engine.config_loaded()) {
+                      c74::max::error("%s: External not initialized. Activate DSP.", m_name);
+                      return {};
+                  }
 
-                for (const auto& outlet : m_msg_outlets) {
-                    if (outlet.type != MaxType::MESSAGE) continue;
-                    std::vector<float> data;
-                    data.reserve(outlet.num_channels);
-                    for (size_t j = 0; j < outlet.num_channels; ++j)
-                        data.push_back(m_engine.get_message_output(outlet.tensor_index, j));
-                    if (data.size() == 1) {
-                        outlet.outlet->send(data[0]);
-                    } else {
-                        c74::min::atoms msg;
-                        msg.push_back("list");
-                        for (float v : data) msg.push_back(v);
-                        outlet.outlet->send(msg);
-                    }
-                }
+                  for (const auto& outlet : m_msg_outlets) {
+                      if (outlet.m_type != MaxType::MESSAGE) { continue; }
+                      std::vector<float> data;
+                      data.reserve(outlet.m_num_channels);
+                      for (size_t j = 0; j < outlet.m_num_channels; ++j) {
+                          data.push_back(m_engine.get_message_output(outlet.m_tensor_index, j));
+                      }
+                      if (data.size() == 1) {
+                          outlet.m_outlet->send(data[0]);
+                      } else {
+                          c74::min::atoms msg;
+                          msg.emplace_back("list");
+                          for (float const v : data) { msg.emplace_back(v); }
+                          outlet.m_outlet->send(msg);
+                      }
+                  }
 
-                for (const auto& outlet : m_msg_outlets) {
-                    if (outlet.type == MaxType::LATENCY) {
-                        outlet.outlet->send(static_cast<int>(m_engine.latency_samples()));
-                    }
-                }
-                return {};
-            }
-        ),
-        anything(this, "list", "Receive lists in message inlets",
-            MIN_FUNCTION {
-                std::vector<float> data;
-                data.reserve(args.size());
-                for (const auto& a : args) data.push_back(static_cast<float>(a));
-                parse_input_messages(inlet, data);
-                return {};
-            }
-        ),
-        m_float(this, "float", "Receive float in message inlets",
-            MIN_FUNCTION {
-                parse_input_messages(inlet, { static_cast<float>(args[0]) });
-                return {};
-            }
-        ),
-        m_int(this, "int", "Receive int in message inlets",
-            MIN_FUNCTION {
-                parse_input_messages(inlet, { static_cast<float>(args[0]) });
-                return {};
-            }
-        )
-    {}
+                  for (const auto& outlet : m_msg_outlets) {
+                      if (outlet.m_type == MaxType::LATENCY) {
+                          outlet.m_outlet->send(static_cast<int>(m_engine.latency_samples()));
+                      }
+                  }
+                  return {};
+              })
+        , m_anything(
+              this,
+              "list",
+              "Receive lists in message inlets",
+              MIN_FUNCTION {
+                  std::vector<float> data;
+                  data.reserve(args.size());
+                  for (const auto& a : args) { data.push_back(static_cast<float>(a)); }
+                  parse_input_messages(inlet, data);
+                  return {};
+              })
+        , m_float(
+              this,
+              "float",
+              "Receive float in message inlets",
+              MIN_FUNCTION {
+                  parse_input_messages(inlet, {static_cast<float>(args[0])});
+                  return {};
+              })
+        , m_int(
+              this,
+              "int",
+              "Receive int in message inlets",
+              MIN_FUNCTION {
+                  parse_input_messages(inlet, {static_cast<float>(args[0])});
+                  return {};
+              }) {}
 
+protected:
     // Load the config given as the first object argument and, if valid, build the
     // object's inlets/outlets. Called from the Derived constructor body (not the
     // base ctor) so the create_signal_ports() override dispatches correctly.
     void initialize(const c74::min::atoms& args) {
         const std::string json_path = get_json_path(args);
-        if (!m_valid_config_submitted) return;
+        if (!m_valid_config_submitted) { return; }
 
         std::string err;
         if (!m_engine.load_config(json_path, &err)) {
@@ -176,20 +192,20 @@ protected:
             "%s: Signal input tensors: %zu, Signal output tensors: %zu, "
             "Message input tensors: %zu, Message output tensors: %zu",
             m_name,
-            m_engine.layout().sig_input_channels.size(),
-            m_engine.layout().sig_output_channels.size(),
-            m_engine.layout().msg_input_channels.size(),
-            m_engine.layout().msg_output_channels.size()
-        );
-        if (m_engine.layout().state_pairs.size() > 0) {
+            m_engine.layout().m_sig_input_channels.size(),
+            m_engine.layout().m_sig_output_channels.size(),
+            m_engine.layout().m_msg_input_channels.size(),
+            m_engine.layout().m_msg_output_channels.size());
+        if (m_engine.layout().m_state_pairs.size() > 0) {
             c74::max::post("%s: State-passing mode active — %zu state pair(s) fed back internally.",
-                           m_name, m_engine.layout().state_pairs.size());
+                           m_name,
+                           m_engine.layout().m_state_pairs.size());
         }
 
-        init_external(m_engine.layout().sig_input_channels,
-                      m_engine.layout().sig_output_channels,
-                      m_engine.layout().msg_input_channels,
-                      m_engine.layout().msg_output_channels);
+        init_external(m_engine.layout().m_sig_input_channels,
+                      m_engine.layout().m_sig_output_channels,
+                      m_engine.layout().m_msg_input_channels,
+                      m_engine.layout().m_msg_output_channels);
     }
 
     // Build the signal inlets/outlets. The only part that differs between the two
@@ -200,8 +216,8 @@ protected:
 
     // Helper for Derived's create_signal_ports: a descriptive inlet/outlet label.
     static std::string channel_label(const char* kind, size_t tensor, size_t channel) {
-        return std::string("(") + kind + ") Tensor " + std::to_string(tensor + 1)
-             + ", Channel " + std::to_string(channel + 1);
+        return std::string("(") + kind + ") Tensor " + std::to_string(tensor + 1) + ", Channel " +
+               std::to_string(channel + 1);
     }
     static std::string tensor_label(const char* kind, size_t tensor) {
         return std::string("(") + kind + ") Tensor " + std::to_string(tensor + 1);
@@ -209,8 +225,8 @@ protected:
 
     const char* m_name;
 
-    std::vector<Input>  m_sig_inlets;
-    std::vector<Input>  m_msg_inlets;
+    std::vector<Input> m_sig_inlets;
+    std::vector<Input> m_msg_inlets;
     std::vector<Output> m_sig_outlets;
     std::vector<Output> m_msg_outlets;
 
@@ -218,37 +234,38 @@ protected:
     // `decltype(&Derived::dspsetup)` and calls `m_min_object.dspsetup(args)`
     // from outside the class, both of which require public access. A protected
     // dspsetup makes min-api's has_dspsetup SFINAE silently fail, so the custom
-    // DSP setup never runs and the audio scratch is never allocated.
+    // DSP setup never runs and the audio scratch is never allocated. The member
+    // name itself is that contract, so it cannot take the m_ prefix.
 public:
-    c74::min::message<> dspsetup;
-    c74::min::message<> anything;
+    c74::min::message<> dspsetup;  // NOLINT(readability-identifier-naming)
+    c74::min::message<> m_anything;
     c74::min::message<> m_float;
     c74::min::message<> m_int;
-    c74::min::message<> bang;
+    c74::min::message<> m_bang;
 
 protected:
     anira_tilde::Engine m_engine;
-    bool        m_valid_config_submitted = false;
-    bool        m_initialized            = false;
+    bool m_valid_config_submitted = false;
+    bool m_initialized = false;
     std::string m_config_file_path;
 
     // Total channel counts summed across all signal tensors; the scratch and the
     // engine's flat channel arrays are sized from these.
-    size_t m_total_in_channels  = 0;
+    size_t m_total_in_channels = 0;
     size_t m_total_out_channels = 0;
 
     // Max audio is double-precision, anira_tilde_core is float-native. Cast
     // scratch + pointer arrays sized in dspsetup so the audio thread never allocates.
-    anira::Buffer<float>       m_in_float_scratch;   // total_channels × buffer_size
-    anira::Buffer<float>       m_out_float_scratch;
-    std::vector<const float*>  m_in_float_ptrs;
-    std::vector<float*>        m_out_float_ptrs;
+    anira::Buffer<float> m_in_float_scratch;  // total_channels × buffer_size
+    anira::Buffer<float> m_out_float_scratch;
+    std::vector<const float*> m_in_float_ptrs;
+    std::vector<float*> m_out_float_ptrs;
 
 private:
     std::string get_json_path(const c74::min::atoms& args) {
         if (args.size() > 0) {
             const std::string input_path = static_cast<std::string>(args[0]);
-            c74::min::path p(input_path);
+            c74::min::path const p(input_path);
             if (p) {
                 m_config_file_path = static_cast<std::string>(p);
                 c74::max::post("%s: Loading config from: %s", m_name, m_config_file_path.c_str());
@@ -262,22 +279,26 @@ private:
     }
 
     void parse_input_messages(int inlet_num, const std::vector<float>& args) {
-        if (!m_engine.config_loaded()) return;
+        if (!m_engine.config_loaded()) { return; }
         const size_t num_sig_inputs = m_sig_inlets.size();
         const size_t msg_index = static_cast<size_t>(inlet_num) - num_sig_inputs;
-        const size_t expected = m_msg_inlets[msg_index].num_channels;
+        const size_t expected = m_msg_inlets[msg_index].m_num_channels;
         if (args.size() != expected) {
-            c74::max::error("%s: Incorrect number of elements for inlet %zu. Expected %zu but got %zu.",
-                            m_name, msg_index + 1, expected, args.size());
+            c74::max::error(
+                "%s: Incorrect number of elements for inlet %zu. Expected %zu but got %zu.",
+                m_name,
+                msg_index + 1,
+                expected,
+                args.size());
             return;
         }
-        m_engine.set_message_input(m_msg_inlets[msg_index].tensor_index, args);
+        m_engine.set_message_input(m_msg_inlets[msg_index].m_tensor_index, args);
     }
 
     void send_latency_outlet(size_t latency_samples) {
         for (const auto& outlet : m_msg_outlets) {
-            if (outlet.type == MaxType::LATENCY) {
-                outlet.outlet->send(static_cast<int>(latency_samples));
+            if (outlet.m_type == MaxType::LATENCY) {
+                outlet.m_outlet->send(static_cast<int>(latency_samples));
                 break;
             }
         }
@@ -294,7 +315,7 @@ private:
         m_sig_outlets.clear();
         m_msg_outlets.clear();
 
-        m_total_in_channels  = std::accumulate(sig_inputs.begin(),  sig_inputs.end(),  size_t{0});
+        m_total_in_channels = std::accumulate(sig_inputs.begin(), sig_inputs.end(), size_t{0});
         m_total_out_channels = std::accumulate(sig_outputs.begin(), sig_outputs.end(), size_t{0});
 
         create_signal_ports(sig_inputs, sig_outputs);
@@ -304,10 +325,11 @@ private:
         for (size_t t = 0; t < msg_inputs.size(); ++t) {
             for (size_t c = 0; c < msg_inputs[t].size(); ++c) {
                 Input in;
-                in.inlet        = std::make_unique<c74::min::inlet<>>(this, channel_label("message", t, c), "");
-                in.type         = MaxType::MESSAGE;
-                in.num_channels = msg_inputs[t][c];
-                in.tensor_index = msg_in_base + t;
+                in.m_inlet =
+                    std::make_unique<c74::min::inlet<>>(this, channel_label("message", t, c), "");
+                in.m_type = MaxType::MESSAGE;
+                in.m_num_channels = msg_inputs[t][c];
+                in.m_tensor_index = msg_in_base + t;
                 m_msg_inlets.push_back(std::move(in));
             }
         }
@@ -317,19 +339,22 @@ private:
         for (size_t t = 0; t < msg_outputs.size(); ++t) {
             for (size_t c = 0; c < msg_outputs[t].size(); ++c) {
                 Output out;
-                out.outlet       = std::make_unique<c74::min::outlet<>>(this, channel_label("message", t, c), "");
-                out.type         = MaxType::MESSAGE;
-                out.num_channels = msg_outputs[t][c];
-                out.tensor_index = msg_out_base + t;
+                out.m_outlet =
+                    std::make_unique<c74::min::outlet<>>(this, channel_label("message", t, c), "");
+                out.m_type = MaxType::MESSAGE;
+                out.m_num_channels = msg_outputs[t][c];
+                out.m_tensor_index = msg_out_base + t;
                 m_msg_outlets.push_back(std::move(out));
             }
         }
 
         // Dedicated latency outlet always at the end of the message-outlet vector.
         Output latency_out;
-        latency_out.outlet       = std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int");
-        latency_out.type         = MaxType::LATENCY;
-        latency_out.num_channels = 1;
+        latency_out.m_outlet =
+            std::make_unique<c74::min::outlet<>>(this, "(int) Latency Output", "int");
+        latency_out.m_type = MaxType::LATENCY;
+        latency_out.m_num_channels = 1;
         m_msg_outlets.push_back(std::move(latency_out));
     }
+    friend Derived;
 };

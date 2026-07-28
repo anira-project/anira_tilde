@@ -7,14 +7,18 @@
 // out at 440 * 48/44.1 ≈ 479 Hz, so a frequency measurement separates a
 // working resampler from a bypassed one unambiguously.
 
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <numbers>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include "TestBackends.h"
 #include "anira_tilde/inference/Session.h"
@@ -36,14 +40,14 @@ double measure_frequency(const std::vector<float>& samples, double rate) {
     size_t last = 0;
     for (size_t i = 1; i < samples.size(); ++i) {
         if (samples[i - 1] <= 0.0F && samples[i] > 0.0F) {
-            if (crossings == 0) first = i;
+            if (crossings == 0) { first = i; }
             last = i;
             ++crossings;
         }
     }
-    if (crossings < 2) return 0.0;
-    const double periods = static_cast<double>(crossings - 1);
-    const double span = static_cast<double>(last - first);
+    if (crossings < 2) { return 0.0; }
+    const auto periods = static_cast<double>(crossings - 1);
+    const auto span = static_cast<double>(last - first);
     return periods * rate / span;
 }
 
@@ -62,17 +66,18 @@ TEST(Resampler, PreservesFrequencyUpAndDown) {
         std::vector<float> out_block(k_block * 2);
         std::vector<float> collected;
         double phase = 0.0;
-        const double inc = 2.0 * M_PI * 440.0 / src;
+        const double inc = 2.0 * std::numbers::pi * 440.0 / src;
         for (int b = 0; b < 60; ++b) {
             for (size_t i = 0; i < k_block; ++i) {
                 in[i] = static_cast<float>(std::sin(phase));
                 phase += inc;
             }
-            const float* in_ptr[1] = {in.data()};
-            float* out_ptr[1] = {out_block.data()};
+            std::array<const float*, 1> in_ptr = {in.data()};
+            std::array<float*, 1> out_ptr = {out_block.data()};
             const size_t produced =
-                resampler.process(in_ptr, k_block, out_ptr, out_block.size());
-            collected.insert(collected.end(), out_block.begin(),
+                resampler.process(in_ptr.data(), k_block, out_ptr.data(), out_block.size());
+            collected.insert(collected.end(),
+                             out_block.begin(),
                              out_block.begin() + static_cast<long>(produced));
         }
 
@@ -81,8 +86,7 @@ TEST(Resampler, PreservesFrequencyUpAndDown) {
         ASSERT_GT(collected.size(), skip + 4096);
         const std::vector<float> steady(collected.begin() + static_cast<long>(skip),
                                         collected.end());
-        EXPECT_NEAR(measure_frequency(steady, dst), 440.0, 2.0)
-            << "ratio " << src << " -> " << dst;
+        EXPECT_NEAR(measure_frequency(steady, dst), 440.0, 2.0) << "ratio " << src << " -> " << dst;
     }
 }
 
@@ -116,11 +120,11 @@ TEST(Resampler, ProcessExactAlwaysFillsTheBuffer) {
     std::vector<float> out(k_block);
     for (int b = 0; b < 50; ++b) {
         accum += k_block * 44100.0 / 48000.0;
-        const size_t n_in = static_cast<size_t>(accum);
+        const auto n_in = static_cast<size_t>(accum);
         accum -= static_cast<double>(n_in);
-        const float* in_ptr[1] = {in.data()};
-        float* out_ptr[1] = {out.data()};
-        resampler.process_exact(in_ptr, n_in, out_ptr, k_block);
+        std::array<const float*, 1> in_ptr = {in.data()};
+        std::array<float*, 1> out_ptr = {out.data()};
+        resampler.process_exact(in_ptr.data(), n_in, out_ptr.data(), k_block);
     }
     // Steady state: constant input must yield the constant output.
     EXPECT_NEAR(out[k_block - 1], 0.25F, 1e-3F);
@@ -141,24 +145,23 @@ TEST_P(Resampling, SineOscillatorPitchCorrectAtForeignHostRate) {
     const float freq = 440.0F;
     std::vector<float> freq_buf(k_block, freq);
     std::vector<float> audio_buf(k_block);
-    const float* freq_ch[1] = {freq_buf.data()};
-    const float* dummy_in[1] = {nullptr};
-    const float* const* in_ptrs[2] = {freq_ch, dummy_in};
-    size_t in_sizes[2] = {k_block, 0};
-    float* audio_ch[1] = {audio_buf.data()};
-    float* dummy_out[1] = {nullptr};
-    float* const* out_ptrs[2] = {audio_ch, dummy_out};
-    size_t out_sizes[2] = {k_block, 0};
+    std::array<const float*, 1> freq_ch = {freq_buf.data()};
+    std::array<const float*, 1> dummy_in = {nullptr};
+    std::array<const float* const*, 2> in_ptrs = {freq_ch.data(), dummy_in.data()};
+    std::array<size_t, 2> in_sizes = {k_block, 0};
+    std::array<float*, 1> audio_ch = {audio_buf.data()};
+    std::array<float*, 1> dummy_out = {nullptr};
+    std::array<float* const*, 2> out_ptrs = {audio_ch.data(), dummy_out.data()};
+    std::array<size_t, 2> out_sizes = {k_block, 0};
 
     auto run_block = [&] {
-        std::fill(audio_buf.begin(), audio_buf.end(), 0.0F);
-        session.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
+        std::ranges::fill(audio_buf, 0.0F);
+        session.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
     };
 
-    const int warmup =
-        static_cast<int>(session.get_latency_samples() / k_block) + 4;
-    for (int i = 0; i < warmup; ++i) run_block();
+    const int warmup = static_cast<int>(session.get_latency_samples() / k_block) + 4;
+    for (int i = 0; i < warmup; ++i) { run_block(); }
 
     std::vector<float> collected;
     for (int i = 0; i < 24; ++i) {
@@ -173,9 +176,9 @@ TEST_P(Resampling, SineOscillatorPitchCorrectAtForeignHostRate) {
     // No discontinuities: phase state must survive the round trip.
     size_t discontinuities = 0;
     const float max_step =
-        2.0F * static_cast<float>(M_PI) * freq / static_cast<float>(k_host_rate) * 1.5F;
+        2.0F * std::numbers::pi_v<float> * freq / static_cast<float>(k_host_rate) * 1.5F;
     for (size_t i = 1; i < collected.size(); ++i) {
-        if (std::fabs(collected[i] - collected[i - 1]) > max_step) ++discontinuities;
+        if (std::fabs(collected[i] - collected[i - 1]) > max_step) { ++discontinuities; }
     }
     EXPECT_EQ(discontinuities, 0U);
 }
@@ -194,29 +197,28 @@ TEST_P(Resampling, ReportedLatencyIsSampleAccurate) {
 
     std::vector<float> in_buf(k_block, 0.0F);
     std::vector<float> out_buf(k_block, 0.0F);
-    const float* in_ch[1] = {in_buf.data()};
-    const float* dummy_in[1] = {nullptr};
-    const float* const* in_ptrs[2] = {in_ch, dummy_in};
-    size_t in_sizes[2] = {k_block, 0};
-    float* out_ch[1] = {out_buf.data()};
-    float* dummy_out[1] = {nullptr};
-    float* const* out_ptrs[2] = {out_ch, dummy_out};
-    size_t out_sizes[2] = {k_block, 0};
+    std::array<const float*, 1> in_ch = {in_buf.data()};
+    std::array<const float*, 1> dummy_in = {nullptr};
+    std::array<const float* const*, 2> in_ptrs = {in_ch.data(), dummy_in.data()};
+    std::array<size_t, 2> in_sizes = {k_block, 0};
+    std::array<float*, 1> out_ch = {out_buf.data()};
+    std::array<float*, 1> dummy_out = {nullptr};
+    std::array<float* const*, 2> out_ptrs = {out_ch.data(), dummy_out.data()};
+    std::array<size_t, 2> out_sizes = {k_block, 0};
 
     const size_t reported = session.get_latency_samples();
-    const int total_blocks =
-        static_cast<int>(reported / k_block) + 8;  // impulse + full drain
+    const int total_blocks = static_cast<int>(reported / k_block) + 8;  // impulse + full drain
 
     std::vector<float> collected;
     size_t impulse_position = 0;
     for (int b = 0; b < total_blocks; ++b) {
-        std::fill(in_buf.begin(), in_buf.end(), 0.0F);
+        std::ranges::fill(in_buf, 0.0F);
         if (b == 2) {  // a couple of silent blocks first, then the impulse
             in_buf[0] = 1.0F;
             impulse_position = static_cast<size_t>(b) * k_block;
         }
-        std::fill(out_buf.begin(), out_buf.end(), 0.0F);
-        session.process(in_ptrs, in_sizes, out_ptrs, out_sizes);
+        std::ranges::fill(out_buf, 0.0F);
+        session.process(in_ptrs.data(), in_sizes.data(), out_ptrs.data(), out_sizes.data());
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         collected.insert(collected.end(), out_buf.begin(), out_buf.end());
     }
@@ -231,8 +233,7 @@ TEST_P(Resampling, ReportedLatencyIsSampleAccurate) {
     }
     ASSERT_GT(peak, 0.1F) << "impulse never emerged";
 
-    const auto measured =
-        static_cast<long>(peak_position) - static_cast<long>(impulse_position);
+    const auto measured = static_cast<long>(peak_position) - static_cast<long>(impulse_position);
     EXPECT_NEAR(static_cast<double>(measured), static_cast<double>(reported), 2.0)
         << "peak at " << peak_position << ", impulse at " << impulse_position;
 }
@@ -244,6 +245,7 @@ TEST_P(Resampling, InactiveWhenHostMatchesModelRate) {
     EXPECT_FALSE(session.is_resampling());
 }
 
-INSTANTIATE_TEST_SUITE_P(Backends, Resampling,
+INSTANTIATE_TEST_SUITE_P(Backends,
+                         Resampling,
                          testing::ValuesIn(anira_tilde_test::backends()),
                          anira_tilde_test::param_name);

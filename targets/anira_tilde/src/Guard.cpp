@@ -16,15 +16,23 @@
 
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
-#include <limits.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include <sys/syslimits.h>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <utility>
 
 #include "ext.h"
+#include "ext_mess.h"
 #include "ext_obex.h"
+#include "ext_post.h"
 
-static const char* k_conflict_msg =
+namespace {
+
+const char* k_conflict_msg =
     "anira~: cannot load \xE2\x80\x94 another external has already loaded "
     "the libtorch dependency, which would collide. Workaround: quit Max "
     "and do not load the conflicting external.";
@@ -35,16 +43,19 @@ static const char* k_conflict_msg =
 // libtorch present must belong to another external.
 // ---------------------------------------------------------------------------
 
-static const char* foreign_libtorch_loaded() {
-    static const char* leaves[] = { "libtorch.dylib", "libtorch_cpu.dylib", "libc10.dylib" };
+const char* foreign_libtorch_loaded() {
+    static constexpr std::array<const char*, 3> k_leaves = {"libtorch.dylib",
+                                                            "libtorch_cpu.dylib",
+                                                            "libc10.dylib"};
     const uint32_t n = _dyld_image_count();
     for (uint32_t i = 0; i < n; ++i) {
         const char* path = _dyld_get_image_name(i);
-        if (!path) continue;
+        if (!path) { continue; }
         const char* base = strrchr(path, '/');
         base = base ? base + 1 : path;
-        for (size_t k = 0; k < sizeof(leaves) / sizeof(leaves[0]); ++k)
-            if (strcmp(base, leaves[k]) == 0) return path;
+        for (const char* leaf : k_leaves) {
+            if (strcmp(base, leaf) == 0) { return path; }
+        }
     }
     return nullptr;
 }
@@ -54,15 +65,17 @@ static const char* foreign_libtorch_loaded() {
 // other would see libtorch resident. That libtorch is ours, not a foreign
 // collision: if the impl is already loaded, the sibling object may proceed (its
 // dlopen just refcounts the same image).
-static bool own_impl_loaded() {
+bool own_impl_loaded() {
     const uint32_t n = _dyld_image_count();
     for (uint32_t i = 0; i < n; ++i) {
         const char* path = _dyld_get_image_name(i);
-        if (!path) continue;
+        if (!path) { continue; }
         const char* base = strrchr(path, '/');
         base = base ? base + 1 : path;
         if (strcmp(base, "anira_tilde_impl.dylib") == 0 ||
-            strcmp(base, "mc_anira_tilde_impl.dylib") == 0) return true;
+            strcmp(base, "mc_anira_tilde_impl.dylib") == 0) {
+            return true;
+        }
     }
     return false;
 }
@@ -75,21 +88,31 @@ static bool own_impl_loaded() {
 // One stub class per object name we would otherwise have registered. stub_new
 // looks up its own class from the box's class name so a single new/free pair
 // serves both.
-typedef struct _anira_stub { t_object ob; } t_anira_stub;
+struct AniraStub {
+    t_object m_ob;
+};
 
-static void* stub_new(t_symbol* s, long argc, t_atom* argv) {
-    (void)argc; (void)argv;
-    t_class* c = (t_class*)class_findbyname(CLASS_BOX, s);
-    t_anira_stub* x = (t_anira_stub*)object_alloc(c);
+void* stub_new(t_symbol* s, long argc, t_atom* argv) {
+    (void)argc;
+    (void)argv;
+    auto* c = (t_class*)class_findbyname(CLASS_BOX, s);
+    auto* x = (AniraStub*)object_alloc(c);
     error("%s", k_conflict_msg);
     return x;
 }
 
-static void stub_free(t_anira_stub* x) { (void)x; }
+void stub_free(AniraStub* x) {
+    (void)x;
+}
 
-static void install_stub_named(const char* name) {
-    t_class* c = class_new(name, (method)stub_new, (method)stub_free,
-                           (long)sizeof(t_anira_stub), 0L, A_GIMME, 0);
+void install_stub_named(const char* name) {
+    t_class* c = class_new(name,
+                           (method)stub_new,
+                           (method)stub_free,
+                           (long)sizeof(AniraStub),
+                           nullptr,
+                           A_GIMME,
+                           0);
     class_register(CLASS_BOX, c);
 }
 
@@ -101,26 +124,25 @@ static void install_stub_named(const char* name) {
 // trailing components to reach <NAME>.mxo, then drop the ".mxo" extension.
 // ---------------------------------------------------------------------------
 
-static void bundle_object_name(char* out, size_t cap) {
+void bundle_object_name(char* out, size_t cap) {
     // Default identity if anything below fails.
     snprintf(out, cap, "anira~");
 
     Dl_info info;
-    if (!dladdr((void*)&bundle_object_name, &info) || !info.dli_fname) return;
-    char buf[PATH_MAX];
-    strncpy(buf, info.dli_fname, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
+    if (!dladdr((void*)&bundle_object_name, &info) || !info.dli_fname) { return; }
+    std::array<char, PATH_MAX> buf{};
+    strncpy(buf.data(), info.dli_fname, buf.size() - 1);
     for (int i = 0; i < 3; ++i) {
-        char* slash = strrchr(buf, '/');
-        if (!slash) return;
+        char* slash = strrchr(buf.data(), '/');
+        if (!slash) { return; }
         *slash = '\0';
     }
-    const char* base = strrchr(buf, '/');
-    base = base ? base + 1 : buf;          // "<NAME>.mxo"
-    if (base[0] == '\0') return;
+    const char* base = strrchr(buf.data(), '/');
+    base = base ? base + 1 : buf.data();  // "<NAME>.mxo"
+    if (base[0] == '\0') { return; }
     snprintf(out, cap, "%s", base);
-    char* dot = strrchr(out, '.');         // drop ".mxo"
-    if (dot) *dot = '\0';
+    char* dot = strrchr(out, '.');  // drop ".mxo"
+    if (dot) { *dot = '\0'; }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,20 +151,21 @@ static void bundle_object_name(char* out, size_t cap) {
 // trailing path components to reach .../externals.
 // ---------------------------------------------------------------------------
 
-static bool impl_path(char* out, size_t cap, const char* dylib_leaf) {
+bool impl_path(char* out, size_t cap, const char* dylib_leaf) {
     Dl_info info;
-    if (!dladdr((void*)&impl_path, &info) || !info.dli_fname) return false;
-    char buf[PATH_MAX];
-    strncpy(buf, info.dli_fname, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
+    if (!dladdr((void*)&impl_path, &info) || !info.dli_fname) { return false; }
+    std::array<char, PATH_MAX> buf{};
+    strncpy(buf.data(), info.dli_fname, buf.size() - 1);
     for (int i = 0; i < 4; ++i) {
-        char* slash = strrchr(buf, '/');
-        if (!slash) return false;
+        char* slash = strrchr(buf.data(), '/');
+        if (!slash) { return false; }
         *slash = '\0';
     }
-    const int len = snprintf(out, cap, "%s/%s", buf, dylib_leaf);
-    return len > 0 && (size_t)len < cap;
+    const int len = snprintf(out, cap, "%s/%s", buf.data(), dylib_leaf);
+    return len > 0 && std::cmp_less(len, cap);
 }
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Max entry point. Same build path as a normal Min external, but links no
@@ -151,9 +174,9 @@ static bool impl_path(char* out, size_t cap, const char* dylib_leaf) {
 
 extern "C" void ext_main(void* r) {
     // Which object are we? anira~.mxo and mc.anira~.mxo share this binary.
-    char name[256];
-    bundle_object_name(name, sizeof(name));
-    const bool is_mc = strcmp(name, "mc.anira~") == 0;
+    std::array<char, 256> name{};
+    bundle_object_name(name.data(), name.size());
+    const bool is_mc = strcmp(name.data(), "mc.anira~") == 0;
 
     // A resident libtorch is only a genuine conflict if it isn't the one our own
     // impl loaded (i.e. our impl isn't already present). Otherwise the sibling
@@ -161,8 +184,8 @@ extern "C" void ext_main(void* r) {
     if (const char* foreign = foreign_libtorch_loaded()) {
         if (!own_impl_loaded()) {
             error("%s", k_conflict_msg);
-            error("%s: (conflicting libtorch already loaded from %s)", name, foreign);
-            install_stub_named(name);
+            error("%s: (conflicting libtorch already loaded from %s)", name.data(), foreign);
+            install_stub_named(name.data());
             return;
         }
     }
@@ -170,27 +193,28 @@ extern "C" void ext_main(void* r) {
     // Each object has its own impl dylib (separate translation units, so each
     // has its own min-api class registry).
     const char* dylib = is_mc ? "mc_anira_tilde_impl.dylib" : "anira_tilde_impl.dylib";
-    char path[PATH_MAX];
-    if (!impl_path(path, sizeof(path), dylib)) {
-        error("%s: internal error \xE2\x80\x94 could not locate implementation dylib.", name);
-        install_stub_named(name);
+    std::array<char, PATH_MAX> path{};
+    if (!impl_path(path.data(), path.size(), dylib)) {
+        error("%s: internal error \xE2\x80\x94 could not locate implementation dylib.",
+              name.data());
+        install_stub_named(name.data());
         return;
     }
 
-    void* handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    void* handle = dlopen(path.data(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
-        error("%s: failed to load implementation: %s", name, dlerror());
-        install_stub_named(name);
+        error("%s: failed to load implementation: %s", name.data(), dlerror());
+        install_stub_named(name.data());
         return;
     }
 
     // Each bundle registers exactly one class via its dedicated entry point.
     const char* entry = is_mc ? "mc_anira_tilde_impl_main" : "anira_tilde_impl_main";
-    typedef void (*impl_main_fn)(void*);
+    using impl_main_fn = void (*)(void*);
     auto impl_main = (impl_main_fn)dlsym(handle, entry);
     if (!impl_main) {
-        error("%s: failed to find implementation entry: %s", name, dlerror());
-        install_stub_named(name);
+        error("%s: failed to find implementation entry: %s", name.data(), dlerror());
+        install_stub_named(name.data());
         return;
     }
 
