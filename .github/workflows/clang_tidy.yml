@@ -1,0 +1,48 @@
+name: clang_tidy
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tidy:
+    # macOS, not Linux: the Max SDK (min-api) only targets macOS/Windows, so a
+    # Linux runner cannot produce the compilation database.
+    name: clang-tidy
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - name: macOS-arm64
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: unshallow submodules for git describe
+        shell: bash
+        run: git submodule foreach --recursive 'git fetch --unshallow --tags origin 2>/dev/null || git fetch --tags origin'
+      - uses: tanh-lab/ci-actions/setup-cpp-build-tools@main
+      # macOS runners have no clang-tidy; install the same major version the
+      # Linux jobs use via apt (clang-20).
+      - name: install llvm@20 for clang-tidy
+        shell: bash
+        run: |
+          brew install llvm@20
+          echo "$(brew --prefix llvm@20)/bin" >> "$GITHUB_PATH"
+      # clang-tidy needs a compile_commands.json, so the external, core library
+      # and tests are configured and built first (incl. the opt-in LibTorch
+      # example target) so every analysed translation unit compiles.
+      - uses: tanh-lab/ci-actions/cmake-build@main
+        with:
+          PRESET: clang-tidy
+      - uses: tanh-lab/ci-actions/clang-tidy-check@main
+        with:
+          PRESET: clang-tidy
+          SOURCES: "targets/ test/"
