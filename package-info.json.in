@@ -1,7 +1,6 @@
 {
 	"author" : "anira project",
 	"description" : "Max external wrapping the anira library for real-time neural network inference.",
-	"homepatcher" : "C++ Object Development Kit.maxpat",
 	"max_version_min" : "8.0", "max_version_max" : "none",
 	"name" : "@C74_PACKAGE_NAME@",
 	"os" : {
